@@ -42,6 +42,10 @@ Après une mise à jour du code, si un bouton ne réagit pas ou si un bandeau ro
 
 Le navigateur peut demander l’autorisation caméra. L’export PDF et les polices utilisent des ressources CDN, donc une connexion Internet est nécessaire pour ces éléments.
 
+## Mise en ligne
+
+Le site se publie tel quel sur Vercel (HTTPS, en-têtes de sécurité, pas de build) : voir [docs/DEPLOIEMENT.md](docs/DEPLOIEMENT.md).
+
 ## Utilisation
 
 1. Saisir la largeur du coupon (en cm). Sans recadrage, la longueur est calculée d’après les proportions de la photo.

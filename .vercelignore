@@ -1,0 +1,10 @@
+# Seul le site statique est publié : index.html, projection.html, app.js, src/, CSS.
+tests/
+docs/
+outils/
+phot tache/
+node_modules/
+*.md
+# Sans package.json, Vercel sert le dossier tel quel, sans étape de build.
+package.json
+package-lock.json

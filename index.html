@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>ReTiss | Nesting textile</title>
   <link rel="stylesheet" href="styles.css">
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js" defer></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js" integrity="sha512-qZvrmS2ekKPF2mSznTQsxqPgnpkI4DNTlrdUmTzrDgektczlKNRRhy5X5AAOnx5S09ydFYWWNSfcEqDTTHgtNA==" crossorigin="anonymous" referrerpolicy="no-referrer" defer></script>
 </head>
 <body>
   <div class="app-banner" id="appBanner" role="alert" hidden></div>
@@ -72,28 +72,7 @@
     </section>
   </dialog>
   <footer><span>ReTiss / prototype nesting</span><span>Vérifier le tissu avant découpe</span></footer>
-  <script>
-    // D-33 : contrôle de démarrage. Si app.js ne démarre pas, ou si le navigateur a
-    // gardé en cache une ancienne version, les boutons ne réagissent pas : on le dit.
-    (() => {
-      const banner = document.getElementById('appBanner');
-      const show = (text) => { banner.textContent = text; banner.hidden = false; };
-      let lastError = '';
-      window.addEventListener('error', (event) => { lastError = event.message || lastError; });
-      if (location.protocol === 'file:') {
-        show('L’application doit être ouverte via un serveur local (npm start, puis http://localhost:8000) : ouverte comme fichier, ses boutons ne fonctionnent pas.');
-        return;
-      }
-      window.addEventListener('load', () => setTimeout(() => {
-        const expected = document.documentElement.dataset.appVersion;
-        const loaded = document.documentElement.dataset.appLoaded;
-        if (loaded === expected) return;
-        show(loaded
-          ? `Le navigateur utilise une ancienne version du code (${loaded} au lieu de ${expected}) : les nouveaux boutons ne fonctionnent pas. Appuie sur Ctrl + F5 pour recharger sans cache.`
-          : `L’application n’a pas démarré${lastError ? ` (${lastError})` : ''}. Appuie sur Ctrl + F5 pour recharger sans cache ; si le problème persiste, lance npm start.`);
-      }, 1500));
-    })();
-  </script>
+  <script src="src/ui/startup-check.js"></script>
   <script type="module" src="app.js"></script>
 </body>
 </html>

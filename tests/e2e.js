@@ -123,6 +123,8 @@ async function scenario(baseUrl, browser) {
     if (message.method === 'Runtime.consoleAPICalled' && message.params.type === 'error') errors.push(message.params.args.map((arg) => arg.value ?? arg.description).join(' '));
   });
   await cdp.send('Runtime.enable'); await cdp.send('Page.enable');
+  // Toute violation de la politique de sécurité (vercel.json) est une erreur du scénario.
+  await cdp.send('Page.addScriptToEvaluateOnNewDocument', { source: "document.addEventListener('securitypolicyviolation', (e) => console.error('CSP bloque ' + e.violatedDirective + ' : ' + e.blockedURI))" });
   await cdp.send('Page.navigate', { url: baseUrl });
 
   await step('Chargement de la page et des modules', async () => {
