@@ -1,0 +1,14 @@
+{
+  "name": "retiss-aip",
+  "private": true,
+  "description": "AIP — détection de taches sur tissu, nesting de patrons et plan de découpe",
+  "type": "module",
+  "scripts": {
+    "start": "node tests/helpers/server.js",
+    "test": "node --test",
+    "test:e2e": "node tests/e2e.js"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}

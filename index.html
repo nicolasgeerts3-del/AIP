@@ -19,6 +19,10 @@
     <section class="result panel"><div class="panel-head"><div><span class="eyebrow">03 / RÉSULTAT</span><h2>Plan de découpe imbriqué</h2></div><span class="optimization-state" id="optimizationState">EN ATTENTE</span><button class="button secondary" id="downloadButton" disabled>↓ Télécharger le PDF 1:1</button></div><div class="result-frame"><canvas id="resultCanvas"></canvas><div class="result-empty" id="resultEmpty"><span>✣</span><p>Le nesting apparaîtra ici</p><small>Chaque pièce sera placée indépendamment.</small></div></div><div class="result-stats" id="resultStats"><div><span>T-SHIRTS COMPLETS</span><strong>—</strong></div><div><span>PIÈCES PLACÉES</span><strong>—</strong></div><div><span>SURFACE TOTALE</span><strong>—</strong></div><div><span>SURFACE DÉFECTUEUSE</span><strong>—</strong></div><div><span>SURFACE UTILISÉE</span><strong>—</strong></div><div><span>PERDUE / SAINE</span><strong>—</strong></div></div></section>
   </main>
   <footer><span>ReTiss / prototype nesting</span><span>Vérifier le tissu avant découpe</span></footer>
-  <script src="app.js"></script>
+  <script>
+    // Les modules JavaScript ne se chargent pas en ouvrant le fichier directement (file://).
+    if (location.protocol === 'file:') document.getElementById('statusText').textContent = 'Ouvrir via un serveur local (voir README)';
+  </script>
+  <script type="module" src="app.js"></script>
 </body>
 </html>
