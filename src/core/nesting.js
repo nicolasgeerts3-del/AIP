@@ -74,25 +74,51 @@ export function stampPiece(occupancy, shape, x, y, clearance) {
   }
 }
 
+/** Nombre maximal de positions candidates par axe issues des défauts (D-23). */
+export const MAX_DEFECT_ANCHORS = 120;
+
+/**
+ * Positions candidates d'une orientation, par axe : bord du tissu, puis bords
+ * des pièces déjà posées (exacts, pour un rangement serré), puis bords des
+ * défauts. D-23 : chaque défaut ajoutait 4 positions par axe et le nombre de
+ * combinaisons x × y explosait (50 taches → 36 s). Au-delà de
+ * MAX_DEFECT_ANCHORS, les positions issues des défauts sont arrondies sur un
+ * pas régulier, vers l'extérieur du défaut pour ne pas s'en rapprocher.
+ */
+export function collectAnchors(shape, { pieces, defects }, gap, grid, maxDefectAnchors = MAX_DEFECT_ANCHORS) {
+  const axis = (start, end, size, gridSize, offset) => {
+    const anchors = new Set();
+    const add = (low) => { if (low >= 0 && low + size <= gridSize) anchors.add(low - offset); };
+    add(0);
+    for (const box of pieces) { add(box[start]); add(box[end] + gap); add(box[start] - size); add(box[start] - size - gap); }
+    if (defects.length * 4 <= maxDefectAnchors) {
+      for (const box of defects) { add(box[start]); add(box[end] + gap); add(box[start] - size); add(box[start] - size - gap); }
+    } else {
+      const step = Math.ceil(2 * gridSize / maxDefectAnchors);
+      for (const box of defects) {
+        add(Math.ceil((box[end] + gap) / step) * step);
+        add(Math.floor((box[start] - size - gap) / step) * step);
+      }
+    }
+    return [...anchors].sort((a, b) => a - b);
+  };
+  return {
+    xs: axis('x0', 'x1', shape.width, grid.width, shape.minX),
+    ys: axis('y0', 'y1', shape.height, grid.height, shape.minY)
+  };
+}
+
 /**
  * Cherche la meilleure position (la plus basse, puis la plus à gauche) parmi
- * des positions candidates alignées sur le bord du tissu et sur les bords des
- * obstacles (défauts et pièces déjà posées). Renvoie null si rien ne rentre.
+ * les positions candidates de collectAnchors. `obstacles` = { pieces, defects },
+ * deux listes de boîtes. Renvoie null si rien ne rentre.
  */
 export function findPlacement(name, orientations, occupancy, obstacles, clearance) {
   const integral = buildIntegral(occupancy);
   const gap = clearance + 1;
   let best = null; let bestBottom = Infinity; let bestRight = Infinity;
   for (const shape of orientations) {
-    const xAnchors = new Set(); const yAnchors = new Set();
-    const addX = (left) => { if (left >= 0 && left + shape.width <= occupancy.width) xAnchors.add(left - shape.minX); };
-    const addY = (top) => { if (top >= 0 && top + shape.height <= occupancy.height) yAnchors.add(top - shape.minY); };
-    addX(0); addY(0);
-    for (const obstacle of obstacles) {
-      addX(obstacle.x0); addX(obstacle.x1 + gap); addX(obstacle.x0 - shape.width); addX(obstacle.x0 - shape.width - gap);
-      addY(obstacle.y0); addY(obstacle.y1 + gap); addY(obstacle.y0 - shape.height); addY(obstacle.y0 - shape.height - gap);
-    }
-    const xs = [...xAnchors].sort((a, b) => a - b); const ys = [...yAnchors].sort((a, b) => a - b);
+    const { xs, ys } = collectAnchors(shape, obstacles, gap, occupancy);
     for (const y of ys) {
       const bottom = y + shape.minY + shape.height;
       if (bottom > bestBottom) break;
@@ -168,7 +194,7 @@ const nextTick = () => new Promise((resolve) => setTimeout(resolve, 0));
 /** Applique un ordre de placement jusqu'à ce que plus aucune pièce ne rentre. */
 export async function runStrategy({ order, gridMask, shapes, clearance, maxKits, onStep = () => {}, yieldToUi = nextTick, shouldAbort = () => false }) {
   const occupancy = dilate(gridMask, clearance);
-  const obstacles = componentBounds(gridMask);
+  const obstacles = { pieces: [], defects: componentBounds(gridMask) };
   const placements = []; const exhausted = new Set(); const distinct = new Set(order).size;
   for (let pass = 1; pass <= maxKits; pass += 1) {
     let placedThisPass = 0;
@@ -180,7 +206,7 @@ export async function runStrategy({ order, gridMask, shapes, clearance, maxKits,
       if (!placement) { exhausted.add(name); continue; }
       placements.push({ ...placement, pass }); placedThisPass += 1;
       stampPiece(occupancy, placement.shape, placement.x, placement.y, clearance);
-      obstacles.push(shapeBox(placement.shape, placement.x, placement.y));
+      obstacles.pieces.push(shapeBox(placement.shape, placement.x, placement.y));
       onStep({ pass, index, orderLength: order.length });
       await yieldToUi();
     }

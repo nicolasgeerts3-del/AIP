@@ -4,10 +4,20 @@ import { CELL_CM, KIT, PIECES, SAFE_CLEARANCE_CELLS, STRATEGIES } from '../src/c
 import { placementOutline, pointInPolygon, polygonBounds } from '../src/core/geometry.js';
 import { createMask, dilate } from '../src/core/mask.js';
 import {
-  buildIntegral, buildPieceShapes, collides, countCompleteKits, estimateMaxKits, findPlacement,
-  isBetterScore, nestPieces, scorePlan, shapeBox, stampPiece, validatePlan
+  buildIntegral, buildPieceShapes, collectAnchors, collides, countCompleteKits, estimateMaxKits, findPlacement,
+  isBetterScore, MAX_DEFECT_ANCHORS, nestPieces, scorePlan, shapeBox, stampPiece, validatePlan
 } from '../src/core/nesting.js';
-import { randomMask, rectMask } from './helpers/fixtures.js';
+import { randomMask, rectMask, seededRandom } from './helpers/fixtures.js';
+
+/** Grille 600 × 900 parsemée de `count` taches de 3 × 3 cellules (1,5 cm). */
+function speckledGrid(count, seed = 1) {
+  const random = seededRandom(seed);
+  const rects = Array.from({ length: count }, () => {
+    const x0 = Math.floor(random() * 597); const y0 = Math.floor(random() * 897);
+    return { x0, y0, x1: x0 + 3, y1: y0 + 3 };
+  });
+  return rectMask(600, 900, rects);
+}
 
 // Pas de 90° pour garder les tests rapides ; le pas de 15° est testé en bout de chaîne (e2e).
 const shapes = buildPieceShapes(PIECES, { cellCm: CELL_CM, rotationStepDeg: 90 });
@@ -89,14 +99,14 @@ describe('stampPiece / findPlacement', () => {
 
   it('place la première pièce dans le coin bas-gauche disponible (haut-gauche de la grille)', () => {
     const occupancy = createMask(300, 300);
-    const placement = findPlacement('BANDE', shapes.BANDE, occupancy, [], SAFE_CLEARANCE_CELLS);
+    const placement = findPlacement('BANDE', shapes.BANDE, occupancy, { pieces: [], defects: [] }, SAFE_CLEARANCE_CELLS);
     const box = shapeBox(placement.shape, placement.x, placement.y);
     assert.equal(box.x0, 0); assert.equal(box.y0, 0);
     assert.equal(placement.shape.angle % 180, 0, 'la bande doit être posée à plat');
   });
 
   it('renvoie null quand la pièce ne rentre pas', () => {
-    assert.equal(findPlacement('DOS', shapes.DOS, createMask(50, 50), [], SAFE_CLEARANCE_CELLS), null);
+    assert.equal(findPlacement('DOS', shapes.DOS, createMask(50, 50), { pieces: [], defects: [] }, SAFE_CLEARANCE_CELLS), null);
   });
 });
 
@@ -207,5 +217,40 @@ describe('nestPieces', () => {
 
   it('utilise toutes les stratégies de la configuration', () => {
     for (const order of STRATEGIES) for (const name of order) assert.ok(shapes[name]);
+  });
+});
+
+describe('[D-23] tissu avec beaucoup de petites taches', () => {
+  it('[D-23] limite le nombre de positions candidates issues des défauts', () => {
+    const defects = Array.from({ length: 500 }, (_, i) => ({ x0: i, y0: i, x1: i + 3, y1: i + 3 }));
+    const { xs, ys } = collectAnchors(shapes.MANCHE[0], { pieces: [], defects }, 3, { width: 600, height: 900 });
+    assert.ok(xs.length <= MAX_DEFECT_ANCHORS + 1, `${xs.length} positions en x`);
+    assert.ok(ys.length <= MAX_DEFECT_ANCHORS + 1, `${ys.length} positions en y`);
+  });
+
+  it('[D-23] garde les positions exactes quand il y a peu de défauts', () => {
+    const { xs } = collectAnchors(shapes.BANDE[0], { pieces: [], defects: [{ x0: 100, y0: 0, x1: 110, y1: 5 }] }, 3, { width: 600, height: 900 });
+    assert.ok(xs.includes(113 - shapes.BANDE[0].minX), 'position juste après le défaut absente');
+  });
+
+  it('[D-23] 300 taches : réponse en moins de 20 s avec un plan valide', async () => {
+    // Avec une tache tous les ~21 cm, aucun DOS (52 × 73 cm) ne peut rentrer :
+    // on vérifie la rapidité et la validité, pas le nombre de T-shirts.
+    const start = Date.now();
+    const result = await nestPieces({ gridMask: speckledGrid(300), shapes, yieldToUi: instant });
+    const seconds = (Date.now() - start) / 1000;
+    assert.ok(seconds < 20, `${seconds.toFixed(1)} s`);
+    assert.ok(result.validation.ok, result.validation.reason);
+    assert.ok(result.score.pieceCount >= 10, `seulement ${result.score.pieceCount} pièces`);
+  });
+
+  it('[D-23] 50 taches, rotations de 15° : au moins 8 T-shirts (résultat de l’ancien calcul exact) en moins de 20 s', async () => {
+    const fineShapes = buildPieceShapes(PIECES, { cellCm: CELL_CM, rotationStepDeg: 15 });
+    const start = Date.now();
+    const result = await nestPieces({ gridMask: speckledGrid(50, 51), shapes: fineShapes, yieldToUi: instant });
+    const seconds = (Date.now() - start) / 1000;
+    assert.ok(seconds < 20, `${seconds.toFixed(1)} s`);
+    assert.ok(result.validation.ok, result.validation.reason);
+    assert.ok(result.score.completeKits >= 8, `seulement ${result.score.completeKits} T-shirts`);
   });
 });

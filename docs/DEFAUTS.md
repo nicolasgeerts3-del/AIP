@@ -30,6 +30,7 @@ Gravité : 🔴 critique (découpe fausse ou appli bloquée) · 🟠 majeur · �
 | D-14 | 🟡 | Sans Internet, le bouton PDF ne faisait rien, sans message. | Message explicite si jsPDF est absent. | — |
 | D-15 | 🟡 | Peindre au doigt faisait défiler la page. | CSS `touch-action: none`. | — |
 | D-16 | 🟡 | Ancien résumé d'analyse affiché sur une nouvelle image. | Réinitialisé au chargement. | — |
+| D-23 | 🔴 | Beaucoup de petites taches → calcul de plusieurs minutes, navigateur figé (50 taches : 36 s ; 200 : > 4 min). | `collectAnchors` : au-delà de 120 positions par axe, les positions issues des défauts sont arrondies sur un pas régulier. 50 taches : 9 T-shirts en 3,8 s (avant : 8 en 36 s). | nesting |
 
 ## Ouverts
 
@@ -41,7 +42,6 @@ Gravité : 🔴 critique (découpe fausse ou appli bloquée) · 🟠 majeur · �
 | D-20 | 🔴 | Taille du tissu figée à 3,00 × 4,50 m. | Saisie de la taille dans l'interface. |
 | D-21 | 🔴 | Rotation libre par pas de 15° : le droit-fil est ignoré, le vêtement se déforme. | Orientations autorisées configurables, droit-fil par défaut. |
 | D-22 | 🟠 | Le nesting n'équilibre pas les pièces (manches et bandes en trop). | Placer en priorité la pièce qui manque au T-shirt en cours. |
-| D-23 | 🔴 | Beaucoup de petites taches → calcul de plusieurs minutes, navigateur figé (50 taches : 36 s ; 200 : > 4 min). | Limiter le nombre de positions candidates issues des défauts. |
 | D-24 | 🟠 | PDF de 273 pages A4, peu pratique ; pas de mode projection. | Mode projecteur plein écran avec calibration d'échelle. |
 | D-25 | 🟠 | Pas de marge de couture visible ni de pièces en miroir ; DOS et DEVANT presque identiques. | À valider avec les vrais patrons. |
 | D-26 | 🟡 | Le « #n » affiché sur les pièces est le numéro de passage, pas le numéro de T-shirt. | Renommer ou attribuer de vrais numéros de T-shirt. |
