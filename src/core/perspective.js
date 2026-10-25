@@ -110,3 +110,10 @@ export function warpPerspective(image, corners, outWidth, outHeight) {
   }
   return { width: outWidth, height: outHeight, data: output };
 }
+
+/** Rapport largeur / longueur apparent d'un quadrilatère ordonné (moyenne des bords opposés). */
+export function quadRatio(corners) {
+  const [tl, tr, br, bl] = corners;
+  const length = (a, b) => Math.hypot(b[0] - a[0], b[1] - a[1]);
+  return (length(tl, tr) + length(bl, br)) / (length(tl, bl) + length(tr, br));
+}

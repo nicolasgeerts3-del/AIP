@@ -48,11 +48,13 @@ export const PIECES = Object.freeze({
 /** Composition d'un T-shirt complet. */
 export const KIT = Object.freeze({ DOS: 1, DEVANT: 1, MANCHE: 2, BANDE: 1 });
 
-/** Ordres de placement essayés ; le meilleur plan est conservé. */
-export const STRATEGIES = Object.freeze([
-  ['DOS', 'DEVANT', 'MANCHE', 'MANCHE', 'BANDE'],
-  ['MANCHE', 'MANCHE', 'DOS', 'DEVANT', 'BANDE'],
-  ['DEVANT', 'DOS', 'BANDE', 'MANCHE', 'MANCHE']
+/**
+ * Ordres de pose essayés par le nesting (D-30) ; le meilleur plan est conservé.
+ * Voir pieceSequence dans src/core/nesting.js.
+ */
+export const PLACEMENT_ORDERS = Object.freeze([
+  { id: 'par-taille', label: 'Grandes pièces d’abord, petites dans les trous' },
+  { id: 'par-tshirt', label: 'T-shirt par T-shirt' }
 ]);
 
 export const COLORS = Object.freeze({ DOS: '#3979b5', DEVANT: '#4f9b69', MANCHE: '#e58b3e', BANDE: '#8d6bb3' });

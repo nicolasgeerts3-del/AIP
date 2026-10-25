@@ -290,12 +290,15 @@ async function scenario(baseUrl) {
       const input = document.querySelector('#fileInput'); input.files = transfer.files; input.dispatchEvent(new Event('change'));
     })()`);
     await waitFor("retissDebug.state.image && retissDebug.state.image.width === 600", { message: 'photo non chargée' });
-    check(await evaluate(`${text('#statusText')}.includes('attention')`), 'pas d’avertissement de proportions avant recadrage');
+    // D-29 : sans recadrage, le tissu prend les proportions de la photo (paysage 4:3).
+    check(await evaluate('Math.abs(retissDebug.state.fabric.widthCm / retissDebug.state.fabric.heightCm - 600 / 450) < 0.01'), '[D-29] le tissu ne suit pas les proportions de la photo');
+    check(await evaluate("document.querySelector('#fabricHeight').disabled"), '[D-29] la longueur reste modifiable alors qu’elle suit la photo');
     check(await evaluate("!document.querySelector('#cropButton').disabled"), 'bouton Recadrer désactivé');
 
     await evaluate("document.querySelector('#cropButton').click()");
     for (const index of [2, 0, 3, 1]) await clickAt('#sourcePreview', corners[index][0] / 600, corners[index][1] / 450);
     await waitFor(`${text('#statusText')}.includes('recadré')`, { message: 'recadrage non appliqué' });
+    check(await evaluate("!document.querySelector('#fabricHeight').disabled"), 'la longueur n’est pas modifiable après recadrage');
     const ratio = await evaluate('retissDebug.state.image.width / retissDebug.state.image.height');
     const fabricRatio = await evaluate('retissDebug.state.fabric.widthCm / retissDebug.state.fabric.heightCm');
     check(Math.abs(ratio / fabricRatio - 1) < 0.01, `proportions ${ratio.toFixed(3)} ≠ tissu ${fabricRatio.toFixed(3)}`);
@@ -310,11 +313,13 @@ async function scenario(baseUrl) {
 
     await evaluate("(() => { const W = document.querySelector('#fabricWidth'); W.value = '200'; W.dispatchEvent(new Event('change')); })()");
     const newRatio = await evaluate('retissDebug.state.image.width / retissDebug.state.image.height');
-    check(Math.abs(newRatio / (200 / 225) - 1) < 0.01, 'le recadrage n’a pas suivi la nouvelle taille de tissu');
+    const expectedRatio = await evaluate('retissDebug.state.fabric.widthCm / retissDebug.state.fabric.heightCm');
+    check(await evaluate('retissDebug.state.fabric.widthCm === 200'), 'largeur non appliquée');
+    check(Math.abs(newRatio / expectedRatio - 1) < 0.01, 'le recadrage n’a pas suivi la nouvelle taille de tissu');
     check(await evaluate(gridAt(0.5, 0.5)) === 1, 'tache perdue après changement de taille');
   });
 
-  await step('[D-12] Caméra (périphérique simulé) : capture puis arrêt', async () => {
+  await step('[D-12][D-29] Caméra (périphérique simulé) : capture, arrêt, proportions', async () => {
     await evaluate("document.querySelector('#cameraButton').click()");
     await waitFor("!document.querySelector('#captureButton').disabled", { message: 'caméra non démarrée' });
     await evaluate("document.querySelector('#captureButton').click()");
@@ -323,8 +328,8 @@ async function scenario(baseUrl) {
     check(info.w > 0 && info.h > 0, 'image capturée vide');
     check(info.stream === null, 'la caméra reste allumée après la capture');
     check(info.plan, 'le bouton Imbriquer reste actif sur une nouvelle image non analysée');
-    // Le flux simulé est en paysage : l'appli doit prévenir que le plan sera étiré.
-    check(info.status.includes('attention'), `pas d’avertissement de proportions : « ${info.status} »`);
+    // D-29 : le flux simulé est en paysage, le tissu (donc le plan) doit l'être aussi.
+    check(await evaluate('Math.abs(retissDebug.state.fabric.widthCm / retissDebug.state.fabric.heightCm - retissDebug.state.image.width / retissDebug.state.image.height) < 0.01'), '[D-29] le plan n’a pas les proportions de la photo');
   });
 
   await step('Aucune erreur JavaScript pendant le scénario', async () => {

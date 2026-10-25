@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { CELL_MM, COLORS, ORIENTATION_MODES, PIECES } from '../src/config.js';
-import { formatFabric, gridForFabric, validateFabric } from '../src/core/fabric.js';
+import { fabricWithRatio, formatFabric, gridForFabric, validateFabric } from '../src/core/fabric.js';
+import { quadRatio } from '../src/core/perspective.js';
 import { createMask } from '../src/core/mask.js';
 import { buildPieceShapes, nestPieces } from '../src/core/nesting.js';
 import { buildCutPlanPdf, overviewBox } from '../src/export/pdf.js';
@@ -53,5 +54,29 @@ describe('[D-20] taille du tissu', () => {
     const pdf = buildCutPlanPdf(CountingPdf, { placements: result.placements, completeKits: 1, fabric, cellMm: CELL_MM, colors: COLORS });
     // 1500 mm / 190 mm → 8 colonnes, 2250 mm / 277 mm → 9 rangées, plus la synthèse.
     assert.equal(pdf.getNumberOfPages(), 8 * 9 + 1);
+  });
+});
+
+describe('[D-29] proportions du plan = proportions de la photo', () => {
+  it('[D-29] garde la largeur et calcule la longueur d’après la photo', () => {
+    assert.deepEqual({ ...fabricWithRatio(300, 1.5) }, { widthCm: 300, heightCm: 200 });
+    assert.deepEqual({ ...fabricWithRatio(300, 2 / 3) }, { widthCm: 300, heightCm: 450 });
+  });
+
+  it('[D-29] réduit les deux côtés ensemble si la longueur dépasse la limite', () => {
+    const fabric = fabricWithRatio(300, 0.25);
+    assert.equal(fabric.heightCm, 1000);
+    assert.equal(fabric.widthCm, 250);
+  });
+
+  it('[D-29] refuse des proportions invalides', () => {
+    assert.throws(() => fabricWithRatio(300, 0), RangeError);
+    assert.throws(() => fabricWithRatio(300, Number.NaN), RangeError);
+  });
+
+  it('[D-29] quadRatio estime les proportions d’un tissu photographié en biais', () => {
+    assert.ok(Math.abs(quadRatio([[0, 0], [300, 0], [300, 200], [0, 200]]) - 1.5) < 1e-9);
+    const trapezoid = quadRatio([[60, 40], [330, 70], [360, 420], [30, 380]]);
+    assert.ok(trapezoid > 0.7 && trapezoid < 0.9, String(trapezoid));
   });
 });

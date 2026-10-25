@@ -2,14 +2,14 @@
 // modules de src/. Aucun calcul métier ici : détection, nesting, statistiques
 // et PDF vivent dans src/core et src/export, testés sans navigateur.
 import {
-  CELL_CM, CELL_MM, COLORS, DEFAULT_ORIENTATION_MODE, FABRIC, KIT, MAX_IMAGE_WIDTH, MAX_SOURCE_WIDTH, ORIENTATION_MODES, PIECES,
-  SAFE_CLEARANCE_CELLS, STRATEGIES
+  CELL_CM, CELL_MM, COLORS, DEFAULT_ORIENTATION_MODE, FABRIC, FABRIC_LIMITS, KIT, MAX_IMAGE_WIDTH, MAX_SOURCE_WIDTH, ORIENTATION_MODES, PIECES,
+  SAFE_CLEARANCE_CELLS
 } from './src/config.js';
 import { computeColorPlanes, detectDefects } from './src/core/detection.js';
-import { formatFabric, gridForFabric, validateFabric } from './src/core/fabric.js';
+import { fabricWithRatio, formatFabric, gridForFabric, validateFabric } from './src/core/fabric.js';
 import { combineLayers, countMask, createMask, paintStroke, resampleMaxPool } from './src/core/mask.js';
 import { buildPieceShapes, nestPieces } from './src/core/nesting.js';
-import { orderCorners, rectifiedSize, warpPerspective } from './src/core/perspective.js';
+import { orderCorners, quadRatio, rectifiedSize, warpPerspective } from './src/core/perspective.js';
 import { computeSurfaceStats } from './src/core/stats.js';
 import { buildCutPlanPdf } from './src/export/pdf.js';
 import { startCamera, stopCamera } from './src/ui/camera.js';
@@ -26,7 +26,7 @@ const ui = {
   video: $('#video'), captureCanvas: $('#captureCanvas'), sourcePreview: $('#sourcePreview'),
   cameraStage: $('#cameraStage'), cameraPlaceholder: $('#cameraPlaceholder'),
   cameraButton: $('#cameraButton'), captureButton: $('#captureButton'), cropButton: $('#cropButton'), fileInput: $('#fileInput'),
-  fabricWidth: $('#fabricWidth'), fabricHeight: $('#fabricHeight'), fabricBadge: $('#fabricBadge'), fabricIntro: $('#fabricIntro'),
+  fabricWidth: $('#fabricWidth'), fabricHeight: $('#fabricHeight'), fabricLengthHint: $('#fabricLengthHint'), fabricBadge: $('#fabricBadge'), fabricIntro: $('#fabricIntro'),
   analysisPill: $('#analysisPill'), analysisSummary: $('#analysisSummary p'),
   sensitivity: $('#sensitivity'), sensitivityValue: $('#sensitivityValue'), analyzeButton: $('#analyzeButton'),
   stepAnalyze: $('#stepAnalyze'), stepPlan: $('#stepPlan'),
@@ -59,6 +59,7 @@ const state = {
   erasedMask: null,   // zones effacées au pinceau
   analyzed: false,
   fabric: FABRIC,     // taille du coupon en cm (D-20)
+  lengthFromImage: true, // D-29 : tant que la photo n'est pas recadrée, la longueur suit ses proportions
   inputVersion: 0,    // incrémenté dès qu'une entrée du calcul change : image, masque, tissu, orientation
   derived: null,      // cache { version, imageMask, gridMask }
   plan: null,         // { placements, stats, gridMask }
@@ -165,6 +166,9 @@ function loadSource(source) {
   state.source = canvas;
   state.crop = { picking: false, points: [], corners: null };
   ui.cropButton.disabled = false; ui.cropButton.textContent = CROP_LABEL;
+  // D-29 : le plan est imbriqué sur une image aux proportions de la photo.
+  state.lengthFromImage = true;
+  setFabric(fabricWithRatio(state.fabric.widthCm, canvas.width / canvas.height));
   loadImage(canvas);
 }
 
@@ -209,22 +213,42 @@ function proportionMessage() {
     : 'proportions conservées';
 }
 
+/**
+ * Applique une taille de tissu : champs, badges, puis grille et plan s'il y a
+ * un changement. Renvoie true si la taille a changé.
+ */
+function setFabric(fabric) {
+  ui.fabricWidth.value = String(fabric.widthCm); ui.fabricHeight.value = String(fabric.heightCm);
+  ui.fabricHeight.disabled = state.lengthFromImage;
+  ui.fabricLengthHint.textContent = state.lengthFromImage
+    ? 'Longueur calculée d’après les proportions de la photo. Recadre le tissu pour la saisir.'
+    : 'Longueur saisie : l’image redressée suit ces proportions.';
+  if (fabric.widthCm === state.fabric.widthCm && fabric.heightCm === state.fabric.heightCm) return false;
+  state.fabric = fabric;
+  ui.fabricBadge.textContent = formatFabric(fabric); ui.fabricIntro.textContent = formatFabric(fabric);
+  state.inputVersion += 1; // la grille change de taille : masque physique et plan à recalculer
+  invalidatePlan(); scheduleMaskRender();
+  return true;
+}
+
 /** D-20 : applique la taille saisie ; une saisie invalide est signalée et ignorée. */
 function applyFabricInputs() {
   let fabric;
   try {
-    fabric = validateFabric({ widthCm: ui.fabricWidth.value, heightCm: ui.fabricHeight.value });
+    if (state.lengthFromImage && state.image) {
+      // D-29 : seule la largeur est saisie, la longueur suit la photo.
+      const { widthCm } = validateFabric({ widthCm: ui.fabricWidth.value, heightCm: FABRIC_LIMITS.minCm });
+      fabric = fabricWithRatio(widthCm, state.image.width / state.image.height);
+    } else {
+      fabric = validateFabric({ widthCm: ui.fabricWidth.value, heightCm: ui.fabricHeight.value });
+    }
   } catch (error) {
     ui.fabricWidth.setAttribute('aria-invalid', 'true'); ui.fabricHeight.setAttribute('aria-invalid', 'true');
     setStatus(error.message);
     return;
   }
   ui.fabricWidth.removeAttribute('aria-invalid'); ui.fabricHeight.removeAttribute('aria-invalid');
-  if (fabric.widthCm === state.fabric.widthCm && fabric.heightCm === state.fabric.heightCm) return;
-  state.fabric = fabric;
-  ui.fabricBadge.textContent = formatFabric(fabric); ui.fabricIntro.textContent = formatFabric(fabric);
-  state.inputVersion += 1; // la grille change de taille : masque physique et plan à recalculer
-  invalidatePlan(); scheduleMaskRender();
+  if (!setFabric(fabric)) return;
   if (state.crop.corners && !state.crop.picking) {
     // L'image redressée doit avoir les proportions du nouveau tissu : on la recalcule.
     const wasAnalyzed = state.analyzed;
@@ -274,6 +298,11 @@ function addCropPoint(event) {
 
 /** Redresse la photo d'origine selon les coins, aux proportions du tissu saisi, et la charge pour analyse. */
 function applyCrop(corners) {
+  if (state.lengthFromImage) {
+    // Premier recadrage : longueur estimée d'après les coins, puis modifiable à la main.
+    state.lengthFromImage = false;
+    setFabric(fabricWithRatio(state.fabric.widthCm, quadRatio(corners)));
+  }
   const { width, height } = rectifiedSize(corners, state.fabric, MAX_IMAGE_WIDTH);
   const pixels = state.source.getContext('2d').getImageData(0, 0, state.source.width, state.source.height);
   const warped = warpPerspective(pixels, corners, width, height);
@@ -282,7 +311,7 @@ function applyCrop(corners) {
   state.crop = { picking: false, points: [], corners };
   ui.cropButton.textContent = CROP_LABEL;
   loadImage(canvas);
-  setStatus(`Tissu recadré, perspective corrigée — ${formatFabric(state.fabric)}`);
+  setStatus(`Tissu recadré, perspective corrigée — ${formatFabric(state.fabric)} (saisis la longueur réelle si besoin)`);
 }
 
 function runAnalysis() {
@@ -341,7 +370,7 @@ async function runNesting() {
   setProgress(0, 'Optimisation · 0 %');
   try {
     const result = await nestPieces({
-      gridMask, shapes, strategies: STRATEGIES, clearance: SAFE_CLEARANCE_CELLS, kit: KIT,
+      gridMask, shapes, clearance: SAFE_CLEARANCE_CELLS, kit: KIT,
       onProgress: (fraction) => setProgress(fraction * 100, `Optimisation · ${Math.round(fraction * 100)} %`),
       shouldAbort: () => state.inputVersion !== version // D-08 : résultat périmé si une entrée a changé
     });
@@ -489,7 +518,7 @@ ui.orientationMode.addEventListener('change', () => {
 ui.planButton.addEventListener('click', guard(runNesting));
 ui.downloadButton.addEventListener('click', guard(exportPdf));
 
-renderMask(); renderStats();
+setFabric(state.fabric); renderMask(); renderStats();
 
 // Accès en lecture pour les tests de bout en bout (tests/e2e.js).
 window.retissDebug = Object.freeze({ get state() { return state; }, getMasks, getShapes });

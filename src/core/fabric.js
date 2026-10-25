@@ -28,3 +28,17 @@ export function formatFabric(fabric) {
   const meters = (cm) => (cm / 100).toFixed(2).replace('.', ',');
   return `${meters(fabric.widthCm)} m × ${meters(fabric.heightCm)} m`;
 }
+
+/**
+ * D-29 : tissu aux proportions `ratio` (largeur / longueur) en gardant la
+ * largeur demandée ; si la longueur sort des bornes, les deux côtés sont
+ * réduits ou agrandis ensemble pour garder le rapport.
+ */
+export function fabricWithRatio(widthCm, ratio, limits = FABRIC_LIMITS) {
+  if (!(ratio > 0) || !Number.isFinite(ratio)) throw new RangeError(`Proportions invalides : ${ratio}`);
+  let width = Number(widthCm); let height = width / ratio;
+  const scale = Math.min(1, limits.maxCm / Math.max(width, height));
+  width *= scale; height *= scale;
+  const grow = Math.max(1, limits.minCm / Math.min(width, height));
+  return validateFabric({ widthCm: Math.min(limits.maxCm, width * grow), heightCm: Math.min(limits.maxCm, height * grow) }, limits);
+}

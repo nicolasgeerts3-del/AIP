@@ -6,7 +6,8 @@
   "scripts": {
     "start": "node tests/helpers/server.js",
     "test": "node --test",
-    "test:e2e": "node tests/e2e.js"
+    "test:e2e": "node tests/e2e.js",
+    "bench": "node tests/bench.js"
   },
   "engines": {
     "node": ">=22"

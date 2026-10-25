@@ -35,15 +35,18 @@ Gravité : 🔴 critique (découpe fausse ou appli bloquée) · 🟠 majeur · �
 | D-19 | 🔴 | Pas de recadrage : la photo était supposée montrer exactement le coupon, vu de face ; le fond comptait comme défaut, la perspective n'était pas corrigée. | Bouton « Recadrer (4 coins) » : `src/core/perspective.js` (`orderCorners`, `computeHomography`, `warpPerspective`) redresse la photo aux proportions du tissu. Un liseré de bord ≤ 3 cm reste marqué défaut (prudent). | perspective, e2e |
 | D-20 | 🔴 | Taille du tissu figée à 3,00 × 4,50 m. | Champs « Largeur / Longueur » (20 à 1000 cm), `src/core/fabric.js` (`validateFabric`, `gridForFabric`) ; grille, pinceau, statistiques et PDF suivent la taille saisie. | fabric, e2e |
 | D-21 | 🔴 | Rotation libre par pas de 15° : le droit-fil est ignoré, le vêtement se déforme. | `ORIENTATION_MODES` dans `config.js` ; droit-fil (0°/180°) par défaut, menu « Orientation des pièces ». Coût : 10 T-shirts au lieu de 11 sur 3 × 4,5 m. | nesting, e2e |
-| D-23 | 🔴 | Beaucoup de petites taches → calcul de plusieurs minutes, navigateur figé (50 taches : 36 s ; 200 : > 4 min). | `collectAnchors` : au-delà de 120 positions par axe, les positions issues des défauts sont arrondies sur un pas régulier. 50 taches : 9 T-shirts en 3,8 s (avant : 8 en 36 s). | nesting |
+| D-22 | 🟠 | Le nesting n'équilibrait pas les pièces (manches et bandes orphelines). | Le nesting ne pose plus que des T-shirts complets (`pieceSequence`). | nesting |
+| D-23 | 🔴 | Beaucoup de petites taches → calcul de plusieurs minutes, navigateur figé (50 taches : 36 s ; 200 : > 4 min). | D'abord limitation des positions candidates, puis remplacé par la recherche exhaustive avec sauts de D-30 : 300 taches en < 1 s par essai. | nesting |
+| D-26 | 🟡 | Le « #n » affiché sur les pièces était le numéro de passage, pas le numéro de T-shirt. | `pass` = numéro du T-shirt auquel la pièce appartient. | nesting |
+| D-29 | 🔴 | Le plan était toujours imbriqué sur un tissu 3 × 4,5 m (portrait) : une photo en paysage était étirée, le plan n'avait pas le format de la photo. | Sans recadrage, la longueur du tissu est calculée d'après les proportions de la photo (`fabricWithRatio`) ; au recadrage, elle est estimée d'après les coins (`quadRatio`) puis modifiable. | fabric, e2e |
+| D-30 | 🔴 | Imbrication peu efficace : positions candidates limitées aux bords des obstacles, grands vides, pièces orphelines. | Nouvel algorithme : recherche exhaustive du premier emplacement libre (sauts par séries de cases, `Occupancy`), recherche du nombre maximal de T-shirts complets, remplissage depuis les 4 coins, phase aléatoire de 2,5 s. Droit-fil 3 × 4,5 m : 10 → 11–12 T-shirts ; photo de test : 2 → 3. `npm run bench` pour comparer. | nesting |
+| D-31 | 🔴 | Un fond détecté tout autour d'une photo non recadrée faisait remplir tout le tissu comme une tache (`fillHoles`). | Un trou n'est rempli que s'il ne ressemble pas au tissu sain. | detection |
 
 ## Ouverts
 
 | ID | Gravité | Défaut | Piste |
 |----|---------|--------|-------|
-| D-22 | 🟠 | Le nesting n'équilibre pas les pièces (manches et bandes en trop). | Placer en priorité la pièce qui manque au T-shirt en cours. |
 | D-24 | 🟠 | PDF de 273 pages A4, peu pratique ; pas de mode projection. | Mode projecteur plein écran avec calibration d'échelle. |
 | D-25 | 🟠 | Pas de marge de couture visible ni de pièces en miroir ; DOS et DEVANT presque identiques. | À valider avec les vrais patrons. |
-| D-26 | 🟡 | Le « #n » affiché sur les pièces est le numéro de passage, pas le numéro de T-shirt. | Renommer ou attribuer de vrais numéros de T-shirt. |
 | D-27 | 🟡 | Pinceau sans annulation ni zoom, utilisable à la souris uniquement. | Pile d'annulation, zoom. |
 | D-28 | 🟡 | Le filtre « petites taches » passe après la dilatation, il ne supprime jamais rien. | Le placer avant la dilatation. |
