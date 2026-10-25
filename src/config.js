@@ -31,6 +31,9 @@ export const DEFAULT_ORIENTATION_MODE = 'droit-fil';
 /** Largeur maximale de l'image analysée (en pixels). */
 export const MAX_IMAGE_WIDTH = 700;
 
+/** Largeur maximale conservée de la photo d'origine, pour un recadrage net (D-19). */
+export const MAX_SOURCE_WIDTH = 1600;
+
 /** Facteur MAD par défaut de la détection de taches. */
 export const DEFAULT_MAD_FACTOR = 3.5;
 

@@ -2,17 +2,18 @@
 // modules de src/. Aucun calcul métier ici : détection, nesting, statistiques
 // et PDF vivent dans src/core et src/export, testés sans navigateur.
 import {
-  CELL_CM, CELL_MM, COLORS, DEFAULT_ORIENTATION_MODE, FABRIC, KIT, MAX_IMAGE_WIDTH, ORIENTATION_MODES, PIECES,
+  CELL_CM, CELL_MM, COLORS, DEFAULT_ORIENTATION_MODE, FABRIC, KIT, MAX_IMAGE_WIDTH, MAX_SOURCE_WIDTH, ORIENTATION_MODES, PIECES,
   SAFE_CLEARANCE_CELLS, STRATEGIES
 } from './src/config.js';
 import { computeColorPlanes, detectDefects } from './src/core/detection.js';
 import { formatFabric, gridForFabric, validateFabric } from './src/core/fabric.js';
 import { combineLayers, countMask, createMask, paintStroke, resampleMaxPool } from './src/core/mask.js';
 import { buildPieceShapes, nestPieces } from './src/core/nesting.js';
+import { orderCorners, rectifiedSize, warpPerspective } from './src/core/perspective.js';
 import { computeSurfaceStats } from './src/core/stats.js';
 import { buildCutPlanPdf } from './src/export/pdf.js';
 import { startCamera, stopCamera } from './src/ui/camera.js';
-import { clearCanvas, drawMaskOverlay, drawPlan } from './src/ui/render.js';
+import { clearCanvas, drawCropPoints, drawMaskOverlay, drawPlan } from './src/ui/render.js';
 
 const $ = (selector) => {
   const element = document.querySelector(selector);
@@ -24,7 +25,7 @@ const ui = {
   status: $('#statusText'),
   video: $('#video'), captureCanvas: $('#captureCanvas'), sourcePreview: $('#sourcePreview'),
   cameraStage: $('#cameraStage'), cameraPlaceholder: $('#cameraPlaceholder'),
-  cameraButton: $('#cameraButton'), captureButton: $('#captureButton'), fileInput: $('#fileInput'),
+  cameraButton: $('#cameraButton'), captureButton: $('#captureButton'), cropButton: $('#cropButton'), fileInput: $('#fileInput'),
   fabricWidth: $('#fabricWidth'), fabricHeight: $('#fabricHeight'), fabricBadge: $('#fabricBadge'), fabricIntro: $('#fabricIntro'),
   analysisPill: $('#analysisPill'), analysisSummary: $('#analysisSummary p'),
   sensitivity: $('#sensitivity'), sensitivityValue: $('#sensitivityValue'), analyzeButton: $('#analyzeButton'),
@@ -38,6 +39,7 @@ const ui = {
 };
 
 const DEFAULT_SUMMARY = ui.analysisSummary.textContent;
+const CROP_LABEL = ui.cropButton.textContent;
 const CELL_AREA_CM2 = CELL_CM * CELL_CM;
 
 // D-21 : formes rastérisées par mode d'orientation, calculées à la demande.
@@ -49,6 +51,8 @@ function getShapes(mode) {
 }
 
 const state = {
+  source: null,       // photo d'origine (canvas), avant recadrage (D-19)
+  crop: { picking: false, points: [], corners: null }, // coins cliqués / appliqués, en pixels de la photo d'origine
   image: null,        // { width, height, planes } ; les pixels sont dans ui.captureCanvas
   autoMask: null,     // détection automatique, résolution de l'image
   addedMask: null,    // zones ajoutées au pinceau
@@ -149,6 +153,21 @@ function invalidatePlan() {
 
 // ---------- Image source ----------
 
+/** Nouvelle photo (fichier ou caméra) : la conserve comme source puis l'analyse telle quelle. */
+function loadSource(source) {
+  const width = source.videoWidth || source.naturalWidth || source.width;
+  const height = source.videoHeight || source.naturalHeight || source.height;
+  if (!width || !height) throw new Error('image vide ou pas encore prête');
+  const scale = Math.min(1, MAX_SOURCE_WIDTH / width);
+  const canvas = document.createElement('canvas');
+  canvas.width = Math.max(1, Math.round(width * scale)); canvas.height = Math.max(1, Math.round(height * scale));
+  canvas.getContext('2d', { willReadFrequently: true }).drawImage(source, 0, 0, canvas.width, canvas.height);
+  state.source = canvas;
+  state.crop = { picking: false, points: [], corners: null };
+  ui.cropButton.disabled = false; ui.cropButton.textContent = CROP_LABEL;
+  loadImage(canvas);
+}
+
 function loadImage(source) {
   const width = source.videoWidth || source.naturalWidth || source.width;
   const height = source.videoHeight || source.naturalHeight || source.height;
@@ -206,7 +225,64 @@ function applyFabricInputs() {
   ui.fabricBadge.textContent = formatFabric(fabric); ui.fabricIntro.textContent = formatFabric(fabric);
   state.inputVersion += 1; // la grille change de taille : masque physique et plan à recalculer
   invalidatePlan(); scheduleMaskRender();
+  if (state.crop.corners && !state.crop.picking) {
+    // L'image redressée doit avoir les proportions du nouveau tissu : on la recalcule.
+    const wasAnalyzed = state.analyzed;
+    applyCrop(state.crop.corners);
+    if (wasAnalyzed) runAnalysis();
+    setStatus(`Tissu : ${formatFabric(fabric)} — recadrage recalculé${wasAnalyzed ? ', masque réanalysé (retouches manuelles effacées)' : ''}`);
+    return;
+  }
   setStatus(`Tissu : ${formatFabric(fabric)} — ${proportionMessage()}`);
+}
+
+// ---------- Recadrage (D-19) ----------
+
+function startCropPicking() {
+  state.crop.picking = true; state.crop.points = [];
+  ui.cameraStage.style.aspectRatio = `${state.source.width / state.source.height}`;
+  drawCropPoints(ui.sourcePreview, state.source, []);
+  ui.cropButton.textContent = '✕ Annuler le recadrage';
+  setStatus('Clique les 4 coins du tissu sur la photo (0/4)');
+}
+
+function stopCropPicking() {
+  state.crop.picking = false; state.crop.points = [];
+  ui.cropButton.textContent = CROP_LABEL;
+  ui.cameraStage.style.aspectRatio = `${state.image.width / state.image.height}`;
+  ui.sourcePreview.width = state.image.width; ui.sourcePreview.height = state.image.height;
+  ui.sourcePreview.getContext('2d').drawImage(ui.captureCanvas, 0, 0);
+}
+
+function addCropPoint(event) {
+  const rect = ui.sourcePreview.getBoundingClientRect();
+  if (!rect.width || !rect.height) return;
+  state.crop.points.push([(event.clientX - rect.left) / rect.width * state.source.width, (event.clientY - rect.top) / rect.height * state.source.height]);
+  drawCropPoints(ui.sourcePreview, state.source, state.crop.points);
+  if (state.crop.points.length < 4) { setStatus(`Clique les 4 coins du tissu sur la photo (${state.crop.points.length}/4)`); return; }
+  let corners;
+  try {
+    corners = orderCorners(state.crop.points);
+  } catch (error) {
+    state.crop.points = [];
+    drawCropPoints(ui.sourcePreview, state.source, []);
+    setStatus(`${error.message} — recommence (0/4)`);
+    return;
+  }
+  applyCrop(corners);
+}
+
+/** Redresse la photo d'origine selon les coins, aux proportions du tissu saisi, et la charge pour analyse. */
+function applyCrop(corners) {
+  const { width, height } = rectifiedSize(corners, state.fabric, MAX_IMAGE_WIDTH);
+  const pixels = state.source.getContext('2d').getImageData(0, 0, state.source.width, state.source.height);
+  const warped = warpPerspective(pixels, corners, width, height);
+  const canvas = document.createElement('canvas'); canvas.width = width; canvas.height = height;
+  canvas.getContext('2d').putImageData(new ImageData(warped.data, width, height), 0, 0);
+  state.crop = { picking: false, points: [], corners };
+  ui.cropButton.textContent = CROP_LABEL;
+  loadImage(canvas);
+  setStatus(`Tissu recadré, perspective corrigée — ${formatFabric(state.fabric)}`);
 }
 
 function runAnalysis() {
@@ -319,6 +395,7 @@ async function exportPdf() {
 // ---------- Événements ----------
 
 ui.cameraButton.addEventListener('click', guard(async () => {
+  if (state.crop.picking) stopCropPicking();
   stopCamera(state.stream); state.stream = null;
   ui.captureButton.disabled = true;
   setStatus('Connexion à la caméra…');
@@ -335,7 +412,7 @@ ui.cameraButton.addEventListener('click', guard(async () => {
 }));
 
 ui.captureButton.addEventListener('click', guard(() => {
-  loadImage(ui.video);
+  loadSource(ui.video);
   stopCamera(state.stream); state.stream = null;
   ui.captureButton.disabled = true;
 }));
@@ -345,10 +422,16 @@ ui.fileInput.addEventListener('change', () => {
   ui.fileInput.value = ''; // permet de réimporter le même fichier
   if (!file) return;
   const image = new Image(); const url = URL.createObjectURL(file);
-  image.onload = guard(() => { URL.revokeObjectURL(url); loadImage(image); });
+  image.onload = guard(() => { URL.revokeObjectURL(url); loadSource(image); });
   image.onerror = () => { URL.revokeObjectURL(url); setStatus('Impossible de lire cette image'); };
   image.src = url;
 });
+
+ui.cropButton.addEventListener('click', guard(() => {
+  if (!state.source) return;
+  if (state.crop.picking) { stopCropPicking(); setStatus('Recadrage annulé'); } else startCropPicking();
+}));
+ui.sourcePreview.addEventListener('click', guard((event) => { if (state.crop.picking) addCropPoint(event); }));
 
 ui.fabricWidth.addEventListener('change', guard(applyFabricInputs));
 ui.fabricHeight.addEventListener('change', guard(applyFabricInputs));

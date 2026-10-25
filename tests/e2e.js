@@ -104,6 +104,15 @@ async function drag(points) {
   await delay(80); // laisse passer le requestAnimationFrame du rendu
 }
 
+/** Clic de souris réel sur un élément, en fractions de sa taille affichée. */
+async function clickAt(selector, fx, fy) {
+  await evaluate(`document.querySelector('${selector}').scrollIntoView({ block: 'center' })`);
+  const rect = await evaluate(`(() => { const r = document.querySelector('${selector}').getBoundingClientRect(); return { x: r.left, y: r.top, w: r.width, h: r.height }; })()`);
+  const point = { x: rect.x + fx * rect.w, y: rect.y + fy * rect.h };
+  await cdp.send('Input.dispatchMouseEvent', { type: 'mousePressed', ...point, button: 'left', buttons: 1, clickCount: 1 });
+  await cdp.send('Input.dispatchMouseEvent', { type: 'mouseReleased', ...point, button: 'left', buttons: 0, clickCount: 1 });
+}
+
 const gridAt = (fx, fy) => `(() => { const m = retissDebug.getMasks().gridMask; return m.data[Math.floor(${fy} * m.height) * m.width + Math.floor(${fx} * m.width)]; })()`;
 const text = (selector) => `document.querySelector('${selector}').textContent`;
 
@@ -261,6 +270,48 @@ async function scenario(baseUrl) {
     const saved = await evaluate('window.__saved');
     check(saved.pages === 73, `${saved.pages} pages au lieu de 73`);
     return undefined;
+  });
+
+  await step('[D-19] Recadrage 4 coins : fond supprimé, perspective corrigée', async () => {
+    // Photo 600 × 450 : fond vert, tissu beige photographié en biais, tache rouge au centre du tissu.
+    const corners = [[90, 40], [520, 70], [560, 420], [50, 400]];
+    await evaluate(`(async () => {
+      const corners = ${JSON.stringify(corners)};
+      const canvas = document.createElement('canvas'); canvas.width = 600; canvas.height = 450;
+      const ctx = canvas.getContext('2d'); ctx.fillStyle = 'rgb(40,120,60)'; ctx.fillRect(0, 0, 600, 450);
+      ctx.fillStyle = 'rgb(214,200,172)'; ctx.beginPath(); corners.forEach(([x, y], i) => (i ? ctx.lineTo(x, y) : ctx.moveTo(x, y))); ctx.fill();
+      // Centre du tissu en perspective = intersection des diagonales.
+      const [[x1, y1], [x2, y2], [x3, y3], [x4, y4]] = [corners[0], corners[2], corners[1], corners[3]];
+      const d = (x1 - x2) * (y3 - y4) - (y1 - y2) * (x3 - x4);
+      const t = ((x1 - x3) * (y3 - y4) - (y1 - y3) * (x3 - x4)) / d;
+      ctx.fillStyle = 'rgb(170,60,50)'; ctx.beginPath(); ctx.arc(x1 + t * (x2 - x1), y1 + t * (y2 - y1), 14, 0, 7); ctx.fill();
+      const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/png'));
+      const transfer = new DataTransfer(); transfer.items.add(new File([blob], 'biais.png', { type: 'image/png' }));
+      const input = document.querySelector('#fileInput'); input.files = transfer.files; input.dispatchEvent(new Event('change'));
+    })()`);
+    await waitFor("retissDebug.state.image && retissDebug.state.image.width === 600", { message: 'photo non chargée' });
+    check(await evaluate(`${text('#statusText')}.includes('attention')`), 'pas d’avertissement de proportions avant recadrage');
+    check(await evaluate("!document.querySelector('#cropButton').disabled"), 'bouton Recadrer désactivé');
+
+    await evaluate("document.querySelector('#cropButton').click()");
+    for (const index of [2, 0, 3, 1]) await clickAt('#sourcePreview', corners[index][0] / 600, corners[index][1] / 450);
+    await waitFor(`${text('#statusText')}.includes('recadré')`, { message: 'recadrage non appliqué' });
+    const ratio = await evaluate('retissDebug.state.image.width / retissDebug.state.image.height');
+    const fabricRatio = await evaluate('retissDebug.state.fabric.widthCm / retissDebug.state.fabric.heightCm');
+    check(Math.abs(ratio / fabricRatio - 1) < 0.01, `proportions ${ratio.toFixed(3)} ≠ tissu ${fabricRatio.toFixed(3)}`);
+
+    await evaluate("document.querySelector('#analyzeButton').click()");
+    await waitFor(`${text('#analysisPill')} === 'ANALYSÉ'`);
+    check(await evaluate(gridAt(0.5, 0.5)) === 1, 'la tache n’est pas au centre du tissu redressé');
+    // Le liseré de bord (≤ 3 cm) mélange tissu et fond : il est marqué défaut, ce qui est prudent.
+    // À l'intérieur, plus aucun défaut hors de la tache : le fond a bien disparu.
+    const stray = await evaluate("(() => { const m = retissDebug.getMasks().gridMask; let n = 0; for (let y = 0; y < m.height; y += 1) for (let x = 0; x < m.width; x += 1) { const edge = Math.min(x, y, m.width - 1 - x, m.height - 1 - y); if (m.data[y * m.width + x] && edge > 6 && Math.hypot(x / m.width - 0.5, y / m.height - 0.5) > 0.2) n += 1; } return n; })()");
+    check(stray === 0, `${stray} cellules de défaut loin de la tache et du bord (fond resté dans l’image ?)`);
+
+    await evaluate("(() => { const W = document.querySelector('#fabricWidth'); W.value = '200'; W.dispatchEvent(new Event('change')); })()");
+    const newRatio = await evaluate('retissDebug.state.image.width / retissDebug.state.image.height');
+    check(Math.abs(newRatio / (200 / 225) - 1) < 0.01, 'le recadrage n’a pas suivi la nouvelle taille de tissu');
+    check(await evaluate(gridAt(0.5, 0.5)) === 1, 'tache perdue après changement de taille');
   });
 
   await step('[D-12] Caméra (périphérique simulé) : capture puis arrêt', async () => {

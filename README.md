@@ -14,14 +14,16 @@ Prototype web pour analyser les taches sur un tissu, placer des patrons en évit
   - `detection.js` — détection automatique des taches ;
   - `geometry.js` — patrons, rotation, rastérisation ;
   - `nesting.js` — placement des pièces et contrôle du plan ;
-  - `stats.js` — bilan matière.
+  - `stats.js` — bilan matière ;
+  - `fabric.js` — taille du coupon et grille associée ;
+  - `perspective.js` — recadrage 4 coins et correction de perspective.
 - `src/export/pdf.js` — génération du PDF 1:1.
 - `src/ui/` — dessin des canvas et accès caméra.
 - `tests/` — tests unitaires (`*.test.js`) et test de bout en bout (`e2e.js`).
 - `phot tache/` — image de test.
 - `outils/` — classeurs de comparaison du projet.
 
-Flux des données : image → `computeChroma` → `detectDefects` (masque image) → retouches au pinceau (`combineLayers`) → `resampleMaxPool` (grille 600 × 900, 1 cellule = 5 mm) → `nestPieces` → `validatePlan` → affichage / `buildCutPlanPdf`.
+Flux des données : photo → recadrage (`warpPerspective`) → `computeColorPlanes` → `detectDefects` (masque image) → retouches au pinceau (`combineLayers`) → `resampleMaxPool` (grille du tissu, 1 cellule = 5 mm) → `nestPieces` → `validatePlan` → affichage / `buildCutPlanPdf`.
 
 ## Lancer le site
 
@@ -35,6 +37,17 @@ py -m http.server 8000  # ou avec Python
 Ou, dans VS Code, ouvrir `index.html` avec l’extension **Live Server**.
 
 Le navigateur peut demander l’autorisation caméra. L’export PDF et les polices utilisent des ressources CDN, donc une connexion Internet est nécessaire pour ces éléments.
+
+## Utilisation
+
+1. Saisir la largeur et la longueur du coupon (en cm).
+2. Importer une photo ou utiliser la caméra.
+3. **Recadrer (4 coins)** : cliquer les 4 coins du tissu sur la photo, dans n'importe quel ordre. Le fond est retiré et la perspective corrigée.
+4. **Analyser l'image**, ajuster le facteur MAD, retoucher le masque au pinceau si besoin.
+5. Choisir l'orientation des pièces (droit-fil par défaut), puis **Imbriquer les patrons**.
+6. Télécharger le PDF 1:1.
+
+Les défauts connus et corrigés sont suivis dans [docs/DEFAUTS.md](docs/DEFAUTS.md).
 
 ## Tests
 

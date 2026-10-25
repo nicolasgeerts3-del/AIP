@@ -54,3 +54,19 @@ export function drawPlan(canvas, { imageCanvas, gridMask, placements, colors }) 
     context.fillText(`${placement.name} #${placement.pass}`, (box.minX + box.maxX) / 2, (box.minY + box.maxY) / 2);
   }
 }
+
+/** D-19 : affiche la photo d'origine avec les coins déjà cliqués et le contour en cours. */
+export function drawCropPoints(canvas, sourceCanvas, points) {
+  canvas.width = sourceCanvas.width; canvas.height = sourceCanvas.height;
+  const context = canvas.getContext('2d');
+  context.drawImage(sourceCanvas, 0, 0);
+  const unit = Math.max(2, Math.round(Math.max(canvas.width, canvas.height) / 250));
+  context.strokeStyle = '#e58b3e'; context.fillStyle = '#e58b3e'; context.lineWidth = unit;
+  if (points.length > 1) {
+    context.beginPath();
+    points.forEach(([x, y], index) => (index ? context.lineTo(x, y) : context.moveTo(x, y)));
+    if (points.length === 4) context.closePath();
+    context.stroke();
+  }
+  for (const [x, y] of points) { context.beginPath(); context.arc(x, y, unit * 3, 0, Math.PI * 2); context.fill(); }
+}
