@@ -227,7 +227,7 @@ async function scenario(baseUrl) {
     await drag([[0.6, 0.5], [0.62, 0.5]]);
     await waitFor("!retissDebug.state.nesting", { timeout: 90000 });
     check(await evaluate('retissDebug.state.plan === null'), 'un plan calculé sur l’ancien masque a été conservé');
-    check(await evaluate(`${text('#statusText')}.includes('Masque modifié')`), 'pas de message expliquant l’annulation');
+    check(await evaluate(`${text('#statusText')}.includes('modifié pendant le calcul')`), 'pas de message expliquant l’annulation');
   });
 
   await step('Export PDF 1:1', async () => {
@@ -239,6 +239,27 @@ async function scenario(baseUrl) {
     await waitFor('window.__saved !== null', { timeout: 60000, message: 'PDF non généré' });
     const saved = await evaluate('window.__saved');
     check(saved.pages === 273 && saved.name === 'retiss-plan-1-1.pdf', `PDF inattendu : ${JSON.stringify(saved)}`);
+    return undefined;
+  });
+
+  await step('[D-20] Taille du tissu modifiable : grille, plan et PDF suivent', async () => {
+    const setFabric = (w, h) => evaluate(`(() => { const W = document.querySelector('#fabricWidth'); const H = document.querySelector('#fabricHeight'); W.value = '${w}'; H.value = '${h}'; W.dispatchEvent(new Event('change')); H.dispatchEvent(new Event('change')); })()`);
+    await setFabric(5, 225);
+    check(await evaluate("document.querySelector('#fabricWidth').getAttribute('aria-invalid') === 'true'"), 'saisie invalide non signalée');
+    check(await evaluate('retissDebug.state.fabric.widthCm === 300'), 'une saisie invalide a été appliquée');
+    await setFabric(150, 225);
+    check(await evaluate("retissDebug.state.fabric.widthCm === 150 && retissDebug.state.fabric.heightCm === 225"), 'taille non appliquée');
+    check(await evaluate(`${text('#fabricBadge')} === '1,50 m × 2,25 m'`), 'badge non mis à jour');
+    check(await evaluate('retissDebug.state.plan === null'), 'l’ancien plan reste affiché');
+    check(await evaluate(gridAt(0.25, 0.25)) === 1, 'la tache a disparu après le changement de taille');
+    await evaluate("document.querySelector('#planButton').click()");
+    await waitFor(`${text('#optimizationState')} === 'TERMINÉ'`, { timeout: 90000 });
+    check(await evaluate("document.querySelector('#resultCanvas').width === 300 && document.querySelector('#resultCanvas').height === 450"), 'plan non redimensionné');
+    if (!(await evaluate('!!window.jspdf'))) return 'SKIP';
+    await evaluate("window.__saved = null; document.querySelector('#downloadButton').click()");
+    await waitFor('window.__saved !== null', { timeout: 60000, message: 'PDF non généré' });
+    const saved = await evaluate('window.__saved');
+    check(saved.pages === 73, `${saved.pages} pages au lieu de 73`);
     return undefined;
   });
 

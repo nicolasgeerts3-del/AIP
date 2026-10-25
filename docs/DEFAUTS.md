@@ -32,6 +32,7 @@ Gravité : 🔴 critique (découpe fausse ou appli bloquée) · 🟠 majeur · �
 | D-16 | 🟡 | Ancien résumé d'analyse affiché sur une nouvelle image. | Réinitialisé au chargement. | — |
 | D-17 | 🔴 | Une ombre marquée (−20 % de luminosité) était prise pour une tache. | `computeColorPlanes` : a* et b* calculés après normalisation de l'intensité ; dégradés et ombres douces ignorés. | detection, e2e |
 | D-18 | 🔴 | Les taches sans changement de teinte (graisse, eau, gris sur gris, javel) n'étaient pas détectées. | Second test sur l'écart à la luminosité locale (`maskedBoxMean`, fond recalculé sans les taches), puis `fillHoles` pour remplir les grandes taches. | detection, e2e |
+| D-20 | 🔴 | Taille du tissu figée à 3,00 × 4,50 m. | Champs « Largeur / Longueur » (20 à 1000 cm), `src/core/fabric.js` (`validateFabric`, `gridForFabric`) ; grille, pinceau, statistiques et PDF suivent la taille saisie. | fabric, e2e |
 | D-21 | 🔴 | Rotation libre par pas de 15° : le droit-fil est ignoré, le vêtement se déforme. | `ORIENTATION_MODES` dans `config.js` ; droit-fil (0°/180°) par défaut, menu « Orientation des pièces ». Coût : 10 T-shirts au lieu de 11 sur 3 × 4,5 m. | nesting, e2e |
 | D-23 | 🔴 | Beaucoup de petites taches → calcul de plusieurs minutes, navigateur figé (50 taches : 36 s ; 200 : > 4 min). | `collectAnchors` : au-delà de 120 positions par axe, les positions issues des défauts sont arrondies sur un pas régulier. 50 taches : 9 T-shirts en 3,8 s (avant : 8 en 36 s). | nesting |
 
@@ -40,7 +41,6 @@ Gravité : 🔴 critique (découpe fausse ou appli bloquée) · 🟠 majeur · �
 | ID | Gravité | Défaut | Piste |
 |----|---------|--------|-------|
 | D-19 | 🔴 | Pas de recadrage : la photo est supposée montrer exactement le coupon, vu de face. Le fond compte comme défaut, la perspective n'est pas corrigée. | Recadrage par 4 coins et correction de perspective. |
-| D-20 | 🔴 | Taille du tissu figée à 3,00 × 4,50 m. | Saisie de la taille dans l'interface. |
 | D-22 | 🟠 | Le nesting n'équilibre pas les pièces (manches et bandes en trop). | Placer en priorité la pièce qui manque au T-shirt en cours. |
 | D-24 | 🟠 | PDF de 273 pages A4, peu pratique ; pas de mode projection. | Mode projecteur plein écran avec calibration d'échelle. |
 | D-25 | 🟠 | Pas de marge de couture visible ni de pièces en miroir ; DOS et DEVANT presque identiques. | À valider avec les vrais patrons. |

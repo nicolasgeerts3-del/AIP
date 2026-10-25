@@ -2,10 +2,11 @@
 // modules de src/. Aucun calcul métier ici : détection, nesting, statistiques
 // et PDF vivent dans src/core et src/export, testés sans navigateur.
 import {
-  CELL_CM, CELL_MM, COLORS, DEFAULT_ORIENTATION_MODE, FABRIC, GRID, KIT, MAX_IMAGE_WIDTH, ORIENTATION_MODES, PIECES,
+  CELL_CM, CELL_MM, COLORS, DEFAULT_ORIENTATION_MODE, FABRIC, KIT, MAX_IMAGE_WIDTH, ORIENTATION_MODES, PIECES,
   SAFE_CLEARANCE_CELLS, STRATEGIES
 } from './src/config.js';
 import { computeColorPlanes, detectDefects } from './src/core/detection.js';
+import { formatFabric, gridForFabric, validateFabric } from './src/core/fabric.js';
 import { combineLayers, countMask, createMask, paintStroke, resampleMaxPool } from './src/core/mask.js';
 import { buildPieceShapes, nestPieces } from './src/core/nesting.js';
 import { computeSurfaceStats } from './src/core/stats.js';
@@ -24,6 +25,7 @@ const ui = {
   video: $('#video'), captureCanvas: $('#captureCanvas'), sourcePreview: $('#sourcePreview'),
   cameraStage: $('#cameraStage'), cameraPlaceholder: $('#cameraPlaceholder'),
   cameraButton: $('#cameraButton'), captureButton: $('#captureButton'), fileInput: $('#fileInput'),
+  fabricWidth: $('#fabricWidth'), fabricHeight: $('#fabricHeight'), fabricBadge: $('#fabricBadge'), fabricIntro: $('#fabricIntro'),
   analysisPill: $('#analysisPill'), analysisSummary: $('#analysisSummary p'),
   sensitivity: $('#sensitivity'), sensitivityValue: $('#sensitivityValue'), analyzeButton: $('#analyzeButton'),
   stepAnalyze: $('#stepAnalyze'), stepPlan: $('#stepPlan'),
@@ -52,7 +54,8 @@ const state = {
   addedMask: null,    // zones ajoutées au pinceau
   erasedMask: null,   // zones effacées au pinceau
   analyzed: false,
-  maskVersion: 0,     // incrémenté à chaque changement de masque ou d'image
+  fabric: FABRIC,     // taille du coupon en cm (D-20)
+  inputVersion: 0,    // incrémenté dès qu'une entrée du calcul change : image, masque, tissu, orientation
   derived: null,      // cache { version, imageMask, gridMask }
   plan: null,         // { placements, stats, gridMask }
   nesting: false,
@@ -82,10 +85,11 @@ function guard(handler) {
 
 /** Masque courant à la résolution de l'image et sur la grille physique (avec cache). */
 function getMasks() {
-  if (!state.image) return { imageMask: null, gridMask: createMask(GRID.width, GRID.height) };
-  if (state.derived?.version !== state.maskVersion) {
+  const grid = gridForFabric(state.fabric);
+  if (!state.image) return { imageMask: null, gridMask: createMask(grid.width, grid.height) };
+  if (state.derived?.version !== state.inputVersion) {
     const imageMask = combineLayers(state.autoMask, state.addedMask, state.erasedMask);
-    state.derived = { version: state.maskVersion, imageMask, gridMask: resampleMaxPool(imageMask, GRID.width, GRID.height) };
+    state.derived = { version: state.inputVersion, imageMask, gridMask: resampleMaxPool(imageMask, grid.width, grid.height) };
   }
   return state.derived;
 }
@@ -106,7 +110,7 @@ function scheduleMaskRender() {
 }
 
 function maskChanged() {
-  state.maskVersion += 1;
+  state.inputVersion += 1;
   invalidatePlan();
   scheduleMaskRender();
 }
@@ -163,7 +167,7 @@ function loadImage(source) {
   state.autoMask = createMask(imageWidth, imageHeight);
   state.addedMask = createMask(imageWidth, imageHeight);
   state.erasedMask = createMask(imageWidth, imageHeight);
-  state.analyzed = false; state.derived = null; state.maskVersion += 1;
+  state.analyzed = false; state.derived = null; state.inputVersion += 1;
 
   const ratio = width / height;
   ui.cameraStage.style.aspectRatio = `${ratio}`;
@@ -173,13 +177,36 @@ function loadImage(source) {
   ui.stepAnalyze.classList.remove('active'); ui.planButton.disabled = true;
   setProgress(0, 'Nesting en attente');
   invalidatePlan(); renderMask();
+  setStatus(`Image prête — ${proportionMessage()}`);
+}
 
-  const fabricRatio = FABRIC.widthCm / FABRIC.heightCm;
-  if (Math.abs(ratio / fabricRatio - 1) > 0.05) {
-    setStatus(`Image prête — attention : proportions ${ratio.toFixed(2)} ≠ tissu ${fabricRatio.toFixed(2)}, le plan sera étiré`);
-  } else {
-    setStatus('Image prête — proportions conservées');
+/** Compare les proportions de l'image à celles du tissu saisi. */
+function proportionMessage() {
+  if (!state.image) return formatFabric(state.fabric);
+  const imageRatio = state.image.width / state.image.height;
+  const fabricRatio = state.fabric.widthCm / state.fabric.heightCm;
+  return Math.abs(imageRatio / fabricRatio - 1) > 0.05
+    ? `attention : proportions ${imageRatio.toFixed(2)} ≠ tissu ${fabricRatio.toFixed(2)}, le plan sera étiré`
+    : 'proportions conservées';
+}
+
+/** D-20 : applique la taille saisie ; une saisie invalide est signalée et ignorée. */
+function applyFabricInputs() {
+  let fabric;
+  try {
+    fabric = validateFabric({ widthCm: ui.fabricWidth.value, heightCm: ui.fabricHeight.value });
+  } catch (error) {
+    ui.fabricWidth.setAttribute('aria-invalid', 'true'); ui.fabricHeight.setAttribute('aria-invalid', 'true');
+    setStatus(error.message);
+    return;
   }
+  ui.fabricWidth.removeAttribute('aria-invalid'); ui.fabricHeight.removeAttribute('aria-invalid');
+  if (fabric.widthCm === state.fabric.widthCm && fabric.heightCm === state.fabric.heightCm) return;
+  state.fabric = fabric;
+  ui.fabricBadge.textContent = formatFabric(fabric); ui.fabricIntro.textContent = formatFabric(fabric);
+  state.inputVersion += 1; // la grille change de taille : masque physique et plan à recalculer
+  invalidatePlan(); scheduleMaskRender();
+  setStatus(`Tissu : ${formatFabric(fabric)} — ${proportionMessage()}`);
 }
 
 function runAnalysis() {
@@ -208,7 +235,7 @@ function eventToImagePoint(event) {
 /** Rayons du pinceau en pixels image : le diamètre affiché est en cm sur le tissu. */
 function brushRadii() {
   const radiusCm = Number(ui.brushSize.value) / 2;
-  return { rx: radiusCm * state.image.width / FABRIC.widthCm, ry: radiusCm * state.image.height / FABRIC.heightCm };
+  return { rx: radiusCm * state.image.width / state.fabric.widthCm, ry: radiusCm * state.image.height / state.fabric.heightCm };
 }
 
 function paintTo(point) {
@@ -230,7 +257,7 @@ function setBrushMode(mode) {
 
 async function runNesting() {
   if (state.nesting || !state.image) return;
-  const version = state.maskVersion;
+  const version = state.inputVersion;
   const { gridMask } = getMasks();
   const shapes = getShapes(state.orientationMode);
   state.nesting = true;
@@ -240,12 +267,12 @@ async function runNesting() {
     const result = await nestPieces({
       gridMask, shapes, strategies: STRATEGIES, clearance: SAFE_CLEARANCE_CELLS, kit: KIT,
       onProgress: (fraction) => setProgress(fraction * 100, `Optimisation · ${Math.round(fraction * 100)} %`),
-      shouldAbort: () => state.maskVersion !== version
+      shouldAbort: () => state.inputVersion !== version
     });
     if (result.aborted) {
       setProgress(0, 'Calcul interrompu');
       ui.optimizationState.textContent = 'À RECALCULER';
-      setStatus('Masque modifié pendant le calcul : relance l’imbrication');
+      setStatus('Masque, tissu ou orientation modifié pendant le calcul : relance l’imbrication');
       return;
     }
     if (!result.validation.ok) {
@@ -280,7 +307,7 @@ async function exportPdf() {
   try {
     const pdf = buildCutPlanPdf(JsPdf, {
       placements: state.plan.placements, overviewPng: ui.resultCanvas.toDataURL('image/png'),
-      completeKits: state.plan.stats.completeKits, fabric: FABRIC, cellMm: CELL_MM, colors: COLORS
+      completeKits: state.plan.stats.completeKits, fabric: state.fabric, cellMm: CELL_MM, colors: COLORS
     });
     pdf.save('retiss-plan-1-1.pdf');
     setStatus(`PDF généré (${pdf.getNumberOfPages()} pages)`);
@@ -322,6 +349,9 @@ ui.fileInput.addEventListener('change', () => {
   image.onerror = () => { URL.revokeObjectURL(url); setStatus('Impossible de lire cette image'); };
   image.src = url;
 });
+
+ui.fabricWidth.addEventListener('change', guard(applyFabricInputs));
+ui.fabricHeight.addEventListener('change', guard(applyFabricInputs));
 
 ui.analyzeButton.addEventListener('click', guard(runAnalysis));
 
@@ -365,7 +395,7 @@ ui.orientationMode.replaceChildren(...Object.entries(ORIENTATION_MODES).map(([va
 ui.orientationMode.addEventListener('change', () => {
   state.orientationMode = ui.orientationMode.value;
   // Un plan calculé avec d'autres orientations n'est plus valable.
-  state.maskVersion += 1;
+  state.inputVersion += 1;
   invalidatePlan();
   setStatus(state.orientationMode === 'droit-fil' ? 'Pièces alignées sur le droit-fil' : 'Attention : ce mode ne respecte pas le droit-fil');
 });

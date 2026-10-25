@@ -2,18 +2,15 @@
 // constantes ici : changer la taille du tissu ou la résolution ne doit se faire
 // qu'à un seul endroit.
 
-/** Dimensions réelles du coupon de tissu. */
+/** Dimensions du coupon proposées par défaut ; modifiables dans l'interface (D-20). */
 export const FABRIC = Object.freeze({ widthCm: 300, heightCm: 450 });
+
+/** Bornes acceptées pour chaque côté du coupon, en cm. */
+export const FABRIC_LIMITS = Object.freeze({ minCm: 20, maxCm: 1000 });
 
 /** Taille d'une cellule de la grille physique (0,5 cm = 5 mm). */
 export const CELL_CM = 0.5;
 export const CELL_MM = CELL_CM * 10;
-
-/** Grille physique utilisée pour le nesting : 600 × 900 cellules. */
-export const GRID = Object.freeze({
-  width: Math.round(FABRIC.widthCm / CELL_CM),
-  height: Math.round(FABRIC.heightCm / CELL_CM)
-});
 
 /** Marge de sécurité autour des défauts et entre les pièces (2 cellules = 1 cm). */
 export const SAFE_CLEARANCE_CELLS = 2;

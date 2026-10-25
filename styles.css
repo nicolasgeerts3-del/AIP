@@ -5,3 +5,6 @@
 .camera-stage.has-image video{display:none}
 .mask-stage canvas{touch-action:none;cursor:crosshair}
 .select-input{font:inherit;font-size:13px;padding:9px 10px;border:1px solid var(--line);border-radius:2px;background:var(--paper);color:var(--ink);width:100%}
+.fabric-size{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:14px}
+.fabric-size label{display:flex;flex-direction:column;gap:6px;font-size:12px;color:var(--muted)}
+.select-input[aria-invalid=true]{border-color:#d94242}

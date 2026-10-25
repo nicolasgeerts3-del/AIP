@@ -1,7 +1,14 @@
 // Export PDF : une page de synthèse puis le plan à l'échelle 1:1 découpé en pages A4.
+import { formatFabric } from '../core/fabric.js';
 import { placementOutline, polygonBounds } from '../core/geometry.js';
 
 export const A4 = Object.freeze({ width: 210, height: 297 });
+
+/** Vignette du plan sur la page de synthèse : tient dans 180 × 120 mm quelle que soit la forme du tissu (D-20). */
+export function overviewBox(fabric, area = { x: 15, y: 35, width: 180, height: 120 }) {
+  const scale = Math.min(area.width / fabric.widthCm, area.height / fabric.heightCm);
+  return { x: area.x, y: area.y, width: fabric.widthCm * scale, height: fabric.heightCm * scale };
+}
 
 /** Découpe le tissu (en mm) en tuiles qui tiennent dans la zone imprimable d'une page. */
 export function computeTiles({ fabricWidthMm, fabricHeightMm, page = A4, margin = 10 }) {
@@ -53,8 +60,11 @@ export function buildCutPlanPdf(JsPdf, { placements, overviewPng, completeKits, 
   const pdf = new JsPdf({ orientation: 'portrait', unit: 'mm', format: 'a4' });
 
   pdf.setFontSize(16); pdf.text('ReTiss — plan de découpe 1:1', 15, 18);
-  pdf.setFontSize(10); pdf.text(`${completeKits} T-shirts complets · ${placements.length} pièces · tissu ${(fabric.widthCm / 100).toFixed(2)} m × ${(fabric.heightCm / 100).toFixed(2)} m`, 15, 26);
-  if (overviewPng) pdf.addImage(overviewPng, 'PNG', 15, 35, 80, 80 * fabric.heightCm / fabric.widthCm);
+  pdf.setFontSize(10); pdf.text(`${completeKits} T-shirts complets · ${placements.length} pièces · tissu ${formatFabric(fabric)}`, 15, 26);
+  if (overviewPng) {
+    const box = overviewBox(fabric);
+    pdf.addImage(overviewPng, 'PNG', box.x, box.y, box.width, box.height);
+  }
   pdf.setDrawColor(0); pdf.setLineWidth(0.3); pdf.rect(15, 165, 100, 100);
   pdf.setFontSize(9); pdf.text('Carré témoin 10 cm × 10 cm — vérifier : ce carré doit mesurer 10 cm à l’impression', 15, 272);
 
