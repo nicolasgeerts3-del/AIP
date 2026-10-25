@@ -43,12 +43,13 @@ Gravité : 🔴 critique (découpe fausse ou appli bloquée) · 🟠 majeur · �
 | D-31 | 🔴 | Un fond détecté tout autour d'une photo non recadrée faisait remplir tout le tissu comme une tache (`fillHoles`). | Un trou n'est rempli que s'il ne ressemble pas au tissu sain. | detection |
 | D-32 | 🟠 | Impossible de choisir une autre caméra (téléphone fixé sur un support) : seule la caméra par défaut était utilisable. | Bouton « Connecter une autre caméra » : liste des caméras (`listCameras`), choix mémorisé, procédure de connexion d'un téléphone ; « Capturer » devient « Figer l'image ». | e2e |
 | D-33 | 🟠 | Si le navigateur gardait en cache une ancienne version du code (ou si le code ne démarrait pas), les nouveaux boutons ne réagissaient pas, sans aucun message. | Numéro de version partagé par index.html et le code (`APP_VERSION`) ; bandeau rouge si le code n’a pas démarré ou n’est pas à jour (« Ctrl + F5 ») ; erreurs aussi affichées dans ce bandeau. | e2e |
+| D-24 | 🟠 | Seul un PDF de 273 pages A4 permettait de reporter le plan sur le tissu ; pas de mode projection. | Bouton « ▶ Projeter sur le tissu » : fenêtre plein écran sur le projecteur (`projection.html`), calibrage par 4 coins (homographie, `src/core/projection.js`), mire 10 cm / 50 cm, plan périmé effacé automatiquement. Guide matériel et câbles : `docs/PROJECTION.md`. Le PDF reste disponible. | projection, e2e |
 
 ## Ouverts
 
 | ID | Gravité | Défaut | Piste |
 |----|---------|--------|-------|
-| D-24 | 🟠 | PDF de 273 pages A4, peu pratique ; pas de mode projection. | Mode projecteur plein écran avec calibration d'échelle. |
 | D-25 | 🟠 | Pas de marge de couture visible ni de pièces en miroir ; DOS et DEVANT presque identiques. | À valider avec les vrais patrons. |
 | D-27 | 🟡 | Pinceau sans annulation ni zoom, utilisable à la souris uniquement. | Pile d'annulation, zoom. |
 | D-28 | 🟡 | Le filtre « petites taches » passe après la dilatation, il ne supprime jamais rien. | Le placer avant la dilatation. |
+| D-34 | 🟡 | Un coupon plus grand que la zone couverte par le projecteur doit être découpé en plusieurs fois, sans aide de l'appli. | Projection par zones : calibrer sur une portion du tissu et faire défiler les zones. |

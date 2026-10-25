@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ReTiss | Projection</title>
+  <link rel="stylesheet" href="projection.css">
+</head>
+<body>
+  <canvas id="projectionCanvas" aria-label="Plan de découpe projeté sur le tissu"></canvas>
+
+  <aside class="projection-help" id="projectionHelp">
+    <h1>Projection sur le tissu</h1>
+    <ol>
+      <li>Glisse cette fenêtre sur l’écran du projecteur (Windows : <b>Win + P → Étendre</b>), puis appuie sur <b>F</b> pour le plein écran.</li>
+      <li><b>Calibrage</b> : fais glisser les 4 poignées numérotées sur les 4 coins réels du tissu (1 = haut-gauche du plan, puis sens horaire). Flèches : ajustement fin d’un pixel (Maj + flèches : 10 px), Tab : coin suivant.</li>
+      <li>Vérifie l’échelle : le carré témoin doit mesurer <b>10 cm</b> au mètre ruban, et le quadrillage <b>50 cm</b>.</li>
+      <li>Appuie sur <b>C</b> pour masquer les poignées, puis découpe en suivant les contours.</li>
+    </ol>
+    <div class="projection-actions">
+      <button data-key="f">F · Plein écran</button>
+      <button data-key="c">C · Calibrage</button>
+      <button data-key="m">M · Mire</button>
+      <button data-key="l">L · Étiquettes</button>
+      <button data-key="d">D · Défauts</button>
+      <button data-key="k">K · Couleur</button>
+      <button data-key="[">[ · Trait −</button>
+      <button data-key="]">] · Trait +</button>
+      <button data-key="r">R · Recalibrer</button>
+      <button data-key="h">H · Masquer l’aide</button>
+    </div>
+    <p class="projection-info" id="projectionInfo">En attente du plan…</p>
+  </aside>
+
+  <script type="module" src="src/ui/projection-app.js"></script>
+</body>
+</html>

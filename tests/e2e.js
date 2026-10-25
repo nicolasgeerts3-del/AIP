@@ -36,7 +36,7 @@ async function launchBrowser() {
   const targets = await (await fetch(`http://127.0.0.1:${port}/json/list`)).json();
   const page = targets.find((target) => target.type === 'page');
   const close = () => { child.kill(); setTimeout(() => rmSync(profile, { recursive: true, force: true }), 500); };
-  return { wsUrl: page.webSocketDebuggerUrl, close };
+  return { wsUrl: page.webSocketDebuggerUrl, port, close };
 }
 
 function connect(wsUrl) {
@@ -65,16 +65,16 @@ function connect(wsUrl) {
 const results = [];
 let cdp;
 
-async function evaluate(expression) {
-  const { result, exceptionDetails } = await cdp.send('Runtime.evaluate', { expression, awaitPromise: true, returnByValue: true });
+async function evaluate(expression, connection = cdp) {
+  const { result, exceptionDetails } = await connection.send('Runtime.evaluate', { expression, awaitPromise: true, returnByValue: true });
   if (exceptionDetails) throw new Error(exceptionDetails.exception?.description ?? exceptionDetails.text);
   return result.value;
 }
 
-async function waitFor(expression, { timeout = 10000, message } = {}) {
+async function waitFor(expression, { timeout = 10000, message, connection = cdp } = {}) {
   const start = Date.now();
   while (Date.now() - start < timeout) {
-    if (await evaluate(expression)) return;
+    if (await evaluate(expression, connection)) return;
     await delay(50);
   }
   throw new Error(message ?? `Délai dépassé en attendant : ${expression}`);
@@ -116,7 +116,7 @@ async function clickAt(selector, fx, fy) {
 const gridAt = (fx, fy) => `(() => { const m = retissDebug.getMasks().gridMask; return m.data[Math.floor(${fy} * m.height) * m.width + Math.floor(${fx} * m.width)]; })()`;
 const text = (selector) => `document.querySelector('${selector}').textContent`;
 
-async function scenario(baseUrl) {
+async function scenario(baseUrl, browser) {
   const errors = [];
   cdp.on((message) => {
     if (message.method === 'Runtime.exceptionThrown') errors.push(message.params.exceptionDetails.exception?.description ?? message.params.exceptionDetails.text);
@@ -253,6 +253,46 @@ async function scenario(baseUrl) {
     return undefined;
   });
 
+  await step('[D-24] Projection : plan reçu, contours dessinés, calibrage à la souris', async () => {
+    check(await evaluate("!document.querySelector('#projectButton').disabled"), 'bouton Projeter désactivé');
+    // Ouvre projection.html dans un second onglet (même origine → même BroadcastChannel).
+    const target = await (await fetch(`http://127.0.0.1:${browser.port}/json/new?${encodeURIComponent(baseUrl + 'projection.html')}`, { method: 'PUT' })).json();
+    const projection = await connect(target.webSocketDebuggerUrl);
+    try {
+      await projection.send('Runtime.enable');
+      await waitFor('!!window.projectionDebug', { connection: projection, message: 'page de projection non démarrée' });
+      const pieces = await evaluate('retissDebug.state.plan.placements.length');
+      await waitFor(`window.projectionDebug.state.plan && window.projectionDebug.state.plan.pieces.length === ${pieces}`, { connection: projection, message: 'plan non reçu par la projection' });
+      const lit = await evaluate("(() => { const c = document.querySelector('#projectionCanvas'); const d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data; let n = 0; for (let i = 0; i < d.length; i += 16) if (d[i] + d[i + 1] + d[i + 2] > 300) n += 1; return n; })()", projection);
+      check(lit > 500, `contours non dessinés (${lit} pixels allumés)`);
+
+      // Glisse le coin 1 de 40 × 30 px : le calibrage doit suivre et être mémorisé.
+      const [x, y] = await evaluate('window.projectionDebug.state.corners[0]', projection);
+      await projection.send('Input.dispatchMouseEvent', { type: 'mousePressed', x, y, button: 'left', buttons: 1, clickCount: 1 });
+      await projection.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: x + 40, y: y + 30, button: 'left', buttons: 1 });
+      await projection.send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: x + 40, y: y + 30, button: 'left', buttons: 0, clickCount: 1 });
+      const moved = await evaluate('window.projectionDebug.state.corners[0]', projection);
+      check(Math.abs(moved[0] - x - 40) < 1 && Math.abs(moved[1] - y - 30) < 1, `coin non déplacé : ${JSON.stringify(moved)}`);
+      check(await evaluate("Object.keys(localStorage).some((key) => key.startsWith('retiss.projection.'))", projection), 'calibrage non mémorisé');
+
+      // Raccourci clavier : M masque la mire.
+      const before = await evaluate('window.projectionDebug.state.showPattern', projection);
+      await projection.send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'm', text: 'm' });
+      await projection.send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'm' });
+      check(await evaluate('window.projectionDebug.state.showPattern', projection) === !before, 'raccourci M sans effet');
+
+      // Plan invalidé dans la fenêtre principale → plus aucun contour projeté.
+      await evaluate("(() => { const s = document.querySelector('#orientationMode'); s.value = 'quarts'; s.dispatchEvent(new Event('change')); s.value = 'droit-fil'; s.dispatchEvent(new Event('change')); })()");
+      await waitFor('window.projectionDebug.state.plan === null', { connection: projection, message: 'plan périmé toujours projeté' });
+    } finally {
+      projection.close();
+      await fetch(`http://127.0.0.1:${browser.port}/json/close/${target.id}`);
+    }
+    // Recalcule un plan pour les étapes suivantes.
+    await evaluate("document.querySelector('#planButton').click()");
+    await waitFor(`${text('#optimizationState')} === 'TERMINÉ'`, { timeout: 90000 });
+  });
+
   await step('[D-20] Taille du tissu modifiable : grille, plan et PDF suivent', async () => {
     const setFabric = (w, h) => evaluate(`(() => { const W = document.querySelector('#fabricWidth'); const H = document.querySelector('#fabricHeight'); W.value = '${w}'; H.value = '${h}'; W.dispatchEvent(new Event('change')); H.dispatchEvent(new Event('change')); })()`);
     await setFabric(5, 225);
@@ -383,7 +423,7 @@ const server = await startServer(ROOT, 0);
 const browser = await launchBrowser();
 try {
   cdp = await connect(browser.wsUrl);
-  await scenario(server.url);
+  await scenario(server.url, browser);
 } finally {
   cdp?.close(); browser.close(); server.close();
 }

@@ -1,0 +1,13 @@
+/* Fenêtre de projection (D-24) : fond noir pour que seuls les contours éclairent le tissu. */
+html, body { margin: 0; height: 100%; background: #000; color: #e7ebe4; font-family: Manrope, system-ui, sans-serif; overflow: hidden; }
+canvas { display: block; width: 100vw; height: 100vh; touch-action: none; cursor: crosshair; }
+/* Au centre : les poignées de calibrage sont près des bords, l'aide ne doit pas les recouvrir. */
+.projection-help { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); width: min(460px, calc(100vw - 32px)); box-sizing: border-box; max-height: calc(100vh - 32px); overflow: auto; background: #141a17ee; border: 1px solid #3a463f; border-radius: 4px; padding: 16px 18px; font-size: 13px; line-height: 1.55; }
+.projection-help[hidden] { display: none; }
+.projection-help h1 { font-size: 17px; margin: 0 0 8px; }
+.projection-help ol { margin: 0 0 12px; padding-left: 18px; }
+.projection-actions { display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px; }
+.projection-actions button { font: inherit; font-size: 12px; padding: 7px 8px; border: 1px solid #3a463f; border-radius: 2px; background: #1f2723; color: inherit; cursor: pointer; text-align: left; }
+.projection-actions button:hover { border-color: #e58b3e; }
+.projection-info { margin: 12px 0 0; color: #b9c8bc; font-size: 12px; }
+.projection-info.warning { color: #ffb36b; }

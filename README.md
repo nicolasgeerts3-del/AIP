@@ -18,7 +18,9 @@ Prototype web pour analyser les taches sur un tissu, placer des patrons en évit
   - `fabric.js` — taille du coupon et grille associée ;
   - `perspective.js` — recadrage 4 coins et correction de perspective.
 - `src/export/pdf.js` — génération du PDF 1:1.
-- `src/ui/` — dessin des canvas et accès caméra.
+- `src/ui/` — dessin des canvas, accès caméra et fenêtre de projection (`projection-app.js`).
+- `projection.html`, `projection.css` — fenêtre plein écran affichée sur le projecteur.
+  - `src/core/projection.js` — calibrage 4 coins et données envoyées au projecteur.
 - `tests/` — tests unitaires (`*.test.js`) et test de bout en bout (`e2e.js`).
 - `phot tache/` — image de test.
 - `outils/` — classeurs de comparaison du projet.
@@ -47,7 +49,7 @@ Le navigateur peut demander l’autorisation caméra. L’export PDF et les poli
 3. **Recadrer (4 coins)** : cliquer les 4 coins du tissu sur la photo, dans n'importe quel ordre. Le fond est retiré et la perspective corrigée.
 4. **Analyser l'image**, ajuster le facteur MAD, retoucher le masque au pinceau si besoin.
 5. Choisir l'orientation des pièces (droit-fil par défaut), puis **Imbriquer les patrons**.
-6. Télécharger le PDF 1:1.
+6. **▶ Projeter sur le tissu** : projeter les contours directement sur la table de coupe (guide du matériel, des câbles et des réglages : [docs/PROJECTION.md](docs/PROJECTION.md)), ou télécharger le PDF 1:1.
 
 Les défauts connus et corrigés sont suivis dans [docs/DEFAUTS.md](docs/DEFAUTS.md).
 

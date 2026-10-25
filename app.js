@@ -10,6 +10,7 @@ import { fabricWithRatio, formatFabric, gridForFabric, validateFabric } from './
 import { combineLayers, countMask, createMask, paintStroke, resampleMaxPool } from './src/core/mask.js';
 import { buildPieceShapes, nestPieces } from './src/core/nesting.js';
 import { orderCorners, quadRatio, rectifiedSize, warpPerspective } from './src/core/perspective.js';
+import { planForProjection } from './src/core/projection.js';
 import { computeSurfaceStats } from './src/core/stats.js';
 import { buildCutPlanPdf } from './src/export/pdf.js';
 import { listCameras, startCamera, stopCamera } from './src/ui/camera.js';
@@ -37,7 +38,7 @@ const ui = {
   resetMaskButton: $('#resetMaskButton'), orientationMode: $('#orientationMode'), planButton: $('#planButton'),
   progressBar: $('#progressBar'), progressText: $('#progressText'),
   resultCanvas: $('#resultCanvas'), resultEmpty: $('#resultEmpty'), resultStats: $('#resultStats'),
-  optimizationState: $('#optimizationState'), downloadButton: $('#downloadButton')
+  optimizationState: $('#optimizationState'), downloadButton: $('#downloadButton'), projectButton: $('#projectButton')
 };
 
 const DEFAULT_SUMMARY = ui.analysisSummary.textContent;
@@ -159,6 +160,7 @@ function renderStats() {
 
 function invalidatePlan() {
   state.plan = null;
+  publishPlan(); // la projection ne doit jamais montrer un plan périmé
   clearCanvas(ui.resultCanvas);
   ui.resultEmpty.style.display = '';
   ui.downloadButton.disabled = true;
@@ -409,11 +411,37 @@ async function runNesting() {
     ui.downloadButton.disabled = placements.length === 0;
     ui.optimizationState.textContent = 'TERMINÉ'; ui.stepPlan.classList.add('active');
     setStatus(`${placements.length} pièces placées · ${state.plan.stats.completeKits} T-shirts complets`);
+    publishPlan();
     setProgress(100, 'Nesting terminé');
   } finally {
     state.nesting = false;
     ui.planButton.disabled = !state.analyzed;
   }
+}
+
+// ---------- Projection (D-24) ----------
+
+// Canal partagé avec projection.html (même origine) : la fenêtre de projection
+// dit « hello » à l'ouverture, on lui répond avec le plan courant.
+const projectionChannel = 'BroadcastChannel' in window ? new BroadcastChannel('retiss-projection') : null;
+
+function publishPlan() {
+  if (!projectionChannel) return;
+  const message = state.plan
+    ? planForProjection({ placements: state.plan.placements, gridMask: state.plan.gridMask, fabric: state.fabric, cellCm: CELL_CM, colors: COLORS })
+    : { type: 'plan', fabric: state.fabric, pieces: [], defects: [] };
+  projectionChannel.postMessage({ ...message, version: APP_VERSION });
+}
+projectionChannel?.addEventListener('message', (event) => { if (event.data?.type === 'hello') publishPlan(); });
+
+function openProjection() {
+  if (!projectionChannel) throw new Error('ce navigateur ne permet pas la projection (BroadcastChannel absent)');
+  const projection = window.open('projection.html', 'retiss-projection', 'popup=yes,width=1280,height=800');
+  if (!projection) throw new Error('fenêtre de projection bloquée : autorise les fenêtres pop-up pour ce site');
+  projection.focus();
+  setStatus(state.plan
+    ? 'Projection ouverte : glisse la fenêtre sur le projecteur, F pour le plein écran, puis cale les 4 coins sur le tissu'
+    : 'Projection ouverte pour le calibrage : le plan s’affichera dès qu’il sera calculé');
 }
 
 // ---------- Export ----------
@@ -574,6 +602,7 @@ ui.orientationMode.addEventListener('change', () => {
 
 ui.planButton.addEventListener('click', guard(runNesting));
 ui.downloadButton.addEventListener('click', guard(exportPdf));
+ui.projectButton.addEventListener('click', guard(openProjection));
 
 setFabric(state.fabric); renderMask(); renderStats();
 
