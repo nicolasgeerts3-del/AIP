@@ -1,0 +1,35 @@
+# Environnements et caches Python (si des scripts sont ajoutés plus tard)
+.venv/
+venv/
+env/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Dépendances et sorties web
+node_modules/
+dist/
+build/
+coverage/
+
+# Fichiers d’IDE et système
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+Desktop.ini
+*.suo
+*.user
+
+# Fichiers temporaires Microsoft Office
+~$*
+
+# Données brutes / archives volumineuses (ne pas versionner)
+data/raw/
+data/processed/
+datasets/
+*.zip
+*.7z
+*.rar
