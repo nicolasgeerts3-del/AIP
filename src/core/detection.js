@@ -136,6 +136,14 @@ export function detectDefects(planes, {
 
   // Ouverture (supprime le bruit isolé), dilatation de sécurité, puis on bouche
   // l'intérieur des grandes taches dont seul le bord ressort du fond local.
-  const mask = fillHoles(removeSmallComponents(dilate(erode(raw, 1), 2), 4));
+  // D-31 : un trou n'est bouché que s'il ne ressemble pas au tissu sain (sinon
+  // un fond détecté tout autour de la photo ferait disparaître tout le tissu).
+  const healthyL = median(sampledIndexes.map((index) => L[index]));
+  const looksLikeStain = (cells) => {
+    let lightGap = 0; let chromaGap = 0;
+    for (const cell of cells) { lightGap += Math.abs(L[cell] - healthyL); chromaGap += chromaDistance(cell); }
+    return lightGap / cells.length > Math.min(luminanceThreshold, 3 * minLuminanceDelta) || chromaGap / cells.length > chroma.threshold;
+  };
+  const mask = fillHoles(removeSmallComponents(dilate(erode(raw, 1), 2), 4), looksLikeStain);
   return { mask, threshold: chroma.threshold, luminanceThreshold, center, mad: chroma.mad };
 }

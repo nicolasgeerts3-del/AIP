@@ -160,3 +160,24 @@ describe('[D-18] taches sans changement de teinte', () => {
     assert.ok(stainCoverage(mask, big) > 0.99, `couverture ${stainCoverage(mask, big)}`);
   });
 });
+
+describe('[D-31] fond autour du tissu', () => {
+  it('[D-31] un cadre de fond autour du tissu ne fait pas disparaître le tissu sain', () => {
+    // Photo non recadrée : 15 px de table verte autour du tissu beige, une tache au centre.
+    const stain = { cx: 80, cy: 90, r: 8, color: [170, 60, 50] };
+    const image = fabricImage(160, 180, { stains: [stain] });
+    for (let y = 0; y < 180; y += 1) for (let x = 0; x < 160; x += 1) {
+      if (x < 15 || x >= 145 || y < 15 || y >= 165) image.data.set([40, 120, 60, 255], (y * 160 + x) * 4);
+    }
+    const { mask } = detect(image);
+    assert.equal(mask.data[0], 1, 'le fond doit être marqué défaut');
+    assert.ok(stainCoverage(mask, stain) > 0.95, 'tache non détectée');
+    assert.equal(mask.data[40 * 160 + 40], 0, 'le tissu sain a été rempli comme une tache');
+  });
+
+  it('[D-31] fillHoles ne bouche que les trous acceptés', () => {
+    const ring = rectMask(10, 10, [{ x0: 2, y0: 2, x1: 8, y1: 3 }, { x0: 2, y0: 7, x1: 8, y1: 8 }, { x0: 2, y0: 2, x1: 3, y1: 8 }, { x0: 7, y0: 2, x1: 8, y1: 8 }]);
+    assert.equal(countMask(fillHoles(ring, () => false)), countMask(ring));
+    assert.equal(countMask(fillHoles(ring, (cells) => cells.length === 16)), 36);
+  });
+});

@@ -112,11 +112,12 @@ export function removeSmallComponents(mask, minSize) {
 }
 
 /**
- * Bouche les trous : toute zone saine entièrement entourée de défaut devient
- * défaut. Sert à remplir l'intérieur d'une grande tache dont seul le bord a
- * été détecté (D-18).
+ * Bouche les trous : une zone saine entièrement entourée de défaut devient
+ * défaut si accept(cellules) le confirme. Sert à remplir l'intérieur d'une
+ * grande tache dont seul le bord a été détecté (D-18). `accept` évite de
+ * remplir du tissu sain simplement entouré par le fond de la photo (D-31).
  */
-export function fillHoles(mask) {
+export function fillHoles(mask, accept = () => true) {
   const { width, height, data } = mask;
   const outside = new Uint8Array(data.length);
   const queue = new Int32Array(data.length);
@@ -131,8 +132,10 @@ export function fillHoles(mask) {
     if (current >= width) seed(current - width);
     if (current < data.length - width) seed(current + width);
   }
-  const output = createMask(width, height);
-  for (let index = 0; index < data.length; index += 1) output.data[index] = data[index] || !outside[index] ? 1 : 0;
+  const holes = createMask(width, height);
+  for (let index = 0; index < data.length; index += 1) holes.data[index] = !data[index] && !outside[index] ? 1 : 0;
+  const output = cloneMask(mask);
+  forEachComponent(holes, (cells) => { if (accept(cells)) for (const cell of cells) output.data[cell] = 1; });
   return output;
 }
 
