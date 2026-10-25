@@ -390,7 +390,7 @@ async function scenario(baseUrl, browser) {
     const info = await evaluate("({ w: retissDebug.state.image.width, h: retissDebug.state.image.height, stream: retissDebug.state.stream, status: document.querySelector('#statusText').textContent, plan: document.querySelector('#planButton').disabled })");
     check(info.w > 0 && info.h > 0, 'image capturée vide');
     check(info.stream === null, 'la caméra reste allumée après la capture');
-    check(info.plan, 'le bouton Imbriquer reste actif sur une nouvelle image non analysée');
+    check(!info.plan && await evaluate(`${text('#analysisPill')} === 'ANALYSÉ'`), 'la nouvelle image n’est pas analysée automatiquement');
     // D-29 : le flux simulé est en paysage, le tissu (donc le plan) doit l'être aussi.
     check(await evaluate('Math.abs(retissDebug.state.fabric.widthCm / retissDebug.state.fabric.heightCm - retissDebug.state.image.width / retissDebug.state.image.height) < 0.01'), '[D-29] le plan n’a pas les proportions de la photo');
   });

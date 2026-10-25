@@ -37,7 +37,7 @@ const ui = {
   addTool: $('#addTool'), eraseTool: $('#eraseTool'), brushSize: $('#brushSize'), brushValue: $('#brushValue'),
   resetMaskButton: $('#resetMaskButton'), orientationMode: $('#orientationMode'), planButton: $('#planButton'),
   progressBar: $('#progressBar'), progressText: $('#progressText'),
-  resultCanvas: $('#resultCanvas'), resultEmpty: $('#resultEmpty'), resultStats: $('#resultStats'),
+  resultFrame: $('.result-frame'), resultCanvas: $('#resultCanvas'), resultEmpty: $('#resultEmpty'), resultStats: $('#resultStats'),
   optimizationState: $('#optimizationState'), downloadButton: $('#downloadButton'), projectButton: $('#projectButton')
 };
 
@@ -85,7 +85,16 @@ function storeCamera(deviceId) { try { localStorage.setItem('retiss.cameraDevice
 
 function setStatus(text) { ui.status.textContent = text; }
 function setProgress(percent, text) { ui.progressBar.style.width = `${percent}%`; ui.progressText.textContent = text; }
-function formatArea(cm2) { return `${cm2 >= 1 || cm2 === 0 ? cm2.toFixed(0) : '<1'} cm²`; }
+// Nombres au format français : espaces fines entre milliers, virgule décimale.
+const integerFormat = new Intl.NumberFormat('fr-FR', { maximumFractionDigits: 0 });
+const decimalFormat = new Intl.NumberFormat('fr-FR', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+const squareMeterFormat = new Intl.NumberFormat('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+/** Surface lisible : en cm² sous 1 m², en m² au-delà. */
+function formatArea(cm2) {
+  if (cm2 === 0) return '0 cm²';
+  if (cm2 < 1) return '<1 cm²';
+  return cm2 < 10000 ? `${integerFormat.format(cm2)} cm²` : `${squareMeterFormat.format(cm2 / 10000)} m²`;
+}
 
 /** Enveloppe un gestionnaire d'événement : toute erreur s'affiche dans la barre de statut. */
 /** Erreur bien visible en haut de la page, en plus de la barre de statut (D-33). */
@@ -141,19 +150,21 @@ function maskChanged() {
 function renderStats() {
   const { gridMask } = state.plan ?? getMasks();
   const stats = state.plan?.stats ?? computeSurfaceStats({ gridMask, placements: [], cellCm: CELL_CM, kit: KIT });
+  // [titre, valeur, précision affichée en petit]
   const cells = [
-    ['T-SHIRTS COMPLETS', String(stats.completeKits)],
-    ['PIÈCES PLACÉES', String(stats.pieceCount)],
-    ['SURFACE TOTALE', `${stats.totalCm2.toFixed(0)} cm²`],
-    ['SURFACE DÉFECTUEUSE', `${stats.defectCm2.toFixed(0)} cm²`],
-    ['SURFACE UTILISÉE', `${stats.usedCm2.toFixed(0)} cm²`],
-    ['PERDUE / SAINE', `${stats.lostCm2.toFixed(0)} cm² perdus · ${(stats.usageRatio * 100).toFixed(1)} % utilisés`]
+    ['T-SHIRTS COMPLETS', String(stats.completeKits), `${stats.pieceCount} pièces`],
+    ['TISSU SAIN UTILISÉ', `${decimalFormat.format(stats.usageRatio * 100)} %`, 'part du tissu sans défaut'],
+    ['SURFACE DÉCOUPÉE', formatArea(stats.usedCm2), 'surface des patrons'],
+    ['CHUTE', formatArea(stats.lostCm2), 'tissu sain non utilisé'],
+    ['DÉFAUTS', formatArea(stats.defectCm2), 'taches et zones exclues'],
+    ['TISSU', formatArea(stats.totalCm2), formatFabric(state.fabric)]
   ];
-  ui.resultStats.replaceChildren(...cells.map(([label, value]) => {
+  ui.resultStats.replaceChildren(...cells.map(([label, value, detail]) => {
     const cell = document.createElement('div');
     const title = document.createElement('span'); title.textContent = label;
     const strong = document.createElement('strong'); strong.textContent = value;
-    cell.append(title, strong);
+    const small = document.createElement('small'); small.textContent = detail;
+    cell.append(title, strong, small);
     return cell;
   }));
 }
@@ -163,6 +174,7 @@ function invalidatePlan() {
   publishPlan(); // la projection ne doit jamais montrer un plan périmé
   clearCanvas(ui.resultCanvas);
   ui.resultEmpty.style.display = '';
+  ui.resultFrame.classList.remove('has-plan');
   ui.downloadButton.disabled = true;
   ui.optimizationState.textContent = state.nesting ? 'CALCUL…' : state.image ? 'À RECALCULER' : 'EN ATTENTE';
   ui.stepPlan.classList.remove('active');
@@ -215,9 +227,11 @@ function loadImage(source) {
   ui.cameraStage.classList.add('has-image'); ui.cameraPlaceholder.classList.add('hidden');
   ui.analyzeButton.disabled = false; ui.analysisPill.textContent = 'PRÊT'; ui.analysisSummary.textContent = DEFAULT_SUMMARY; // D-16
   ui.stepAnalyze.classList.remove('active'); ui.planButton.disabled = true;
-  setProgress(0, 'Nesting en attente');
+  setProgress(0, 'Imbrication en attente');
   invalidatePlan(); renderMask();
-  setStatus(`Image prête — ${proportionMessage()}`);
+  // L'analyse est instantanée : on la lance d'office, l'utilisateur n'a plus qu'à ajuster.
+  runAnalysis();
+  setStatus(`Image analysée — ${proportionMessage()}`);
 }
 
 /** Compare les proportions de l'image à celles du tissu saisi. */
@@ -375,7 +389,7 @@ function setBrushMode(mode) {
   ui.eraseTool.classList.toggle('active', mode === 'erase');
 }
 
-// ---------- Nesting ----------
+// ---------- Imbrication (nesting) ----------
 
 async function runNesting() {
   if (state.nesting || !state.image) return;
@@ -407,12 +421,13 @@ async function runNesting() {
     state.plan = { placements, gridMask, stats: computeSurfaceStats({ gridMask, placements, cellCm: CELL_CM, kit: KIT }) };
     drawPlan(ui.resultCanvas, { imageCanvas: ui.captureCanvas, gridMask, placements, colors: COLORS });
     ui.resultEmpty.style.display = 'none';
+    ui.resultFrame.classList.add('has-plan');
     renderStats();
     ui.downloadButton.disabled = placements.length === 0;
     ui.optimizationState.textContent = 'TERMINÉ'; ui.stepPlan.classList.add('active');
     setStatus(`${placements.length} pièces placées · ${state.plan.stats.completeKits} T-shirts complets`);
     publishPlan();
-    setProgress(100, 'Nesting terminé');
+    setProgress(100, 'Imbrication terminée');
   } finally {
     state.nesting = false;
     ui.planButton.disabled = !state.analyzed;

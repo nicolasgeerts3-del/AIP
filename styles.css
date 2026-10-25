@@ -27,3 +27,44 @@
 /* D-33 : bandeau d’erreur ou de version en cache. */
 .app-banner{position:sticky;top:0;z-index:20;background:#d94242;color:#fff;padding:12px 20px;font-size:14px;line-height:1.5;text-align:center}
 .app-banner[hidden]{display:none}
+
+/* ---------- Revue ergonomie et design ---------- */
+/* Zones vides compactes tant qu'il n'y a pas d'image ou de plan (l'image impose ensuite ses proportions). */
+.mask-stage{aspect-ratio:16/7}
+.result-frame{min-height:240px}
+.result-frame.has-plan{background:none;min-height:0;display:block}
+.result-frame.has-plan canvas{max-height:80vh}
+/* Les outils du masque restent groupés en haut de leur colonne. */
+.editor-tools .secondary{margin-top:0}
+.editor-tools{align-self:start}
+/* Boutons : deux rangées logiques, et des boutons désactivés encore lisibles. */
+.capture-actions-image{margin-top:9px}
+.button:disabled{opacity:.55}
+.button.secondary{border:1px solid var(--line);background:#fffffc}
+.button.secondary:hover:not(:disabled){border-color:var(--orange)}
+.button:focus-visible,.tool-button:focus-visible,.select-input:focus-visible,label.button:focus-within{outline:2px solid var(--orange);outline-offset:2px}
+.analyze-button{margin-top:4px}
+/* En-tête du résultat : titre et actions passent à la ligne proprement. */
+.panel-head{flex-wrap:wrap;gap:12px}
+.result-actions{display:flex;flex-wrap:wrap;align-items:center;gap:8px}
+/* Statistiques : 3 colonnes, valeur + précision. */
+.result-stats{grid-template-columns:repeat(3,1fr)}
+.result-stats div{border-bottom:1px solid var(--line)}
+.result-stats div:nth-child(3n){border-right:0}
+.result-stats div:nth-last-child(-n+3){border-bottom:0}
+.result-stats small{display:block;margin-top:4px;font-size:11px;color:var(--muted)}
+@media(max-width:800px){
+.topbar{height:auto;min-height:60px;padding:10px 20px;gap:12px}
+.status{text-align:right;line-height:1.4;max-width:60%}
+.panel-head h2{font-size:19px}
+.result-actions{width:100%}
+.result-stats{grid-template-columns:repeat(2,1fr)}
+.result-stats div,.result-stats div:nth-child(3n){border-right:1px solid var(--line);border-bottom:1px solid var(--line)}
+.result-stats div:nth-child(2n){border-right:0}
+.result-stats div:nth-last-child(-n+2){border-bottom:0}
+footer span{display:block}
+.capture-actions .button{flex:1 1 auto;text-align:center}
+}
+/* Sans plan, le canvas vide ne doit pas agrandir le cadre ; sans image, cadre photo compact. */
+.result-frame:not(.has-plan) canvas{display:none}
+.camera-stage{aspect-ratio:4/3}
