@@ -111,6 +111,31 @@ export function removeSmallComponents(mask, minSize) {
   return output;
 }
 
+/**
+ * Bouche les trous : toute zone saine entièrement entourée de défaut devient
+ * défaut. Sert à remplir l'intérieur d'une grande tache dont seul le bord a
+ * été détecté (D-18).
+ */
+export function fillHoles(mask) {
+  const { width, height, data } = mask;
+  const outside = new Uint8Array(data.length);
+  const queue = new Int32Array(data.length);
+  let tail = 0;
+  const seed = (index) => { if (!data[index] && !outside[index]) { outside[index] = 1; queue[tail++] = index; } };
+  for (let x = 0; x < width; x += 1) { seed(x); seed((height - 1) * width + x); }
+  for (let y = 0; y < height; y += 1) { seed(y * width); seed(y * width + width - 1); }
+  for (let head = 0; head < tail; head += 1) {
+    const current = queue[head]; const x = current % width;
+    if (x > 0) seed(current - 1);
+    if (x < width - 1) seed(current + 1);
+    if (current >= width) seed(current - width);
+    if (current < data.length - width) seed(current + width);
+  }
+  const output = createMask(width, height);
+  for (let index = 0; index < data.length; index += 1) output.data[index] = data[index] || !outside[index] ? 1 : 0;
+  return output;
+}
+
 /** Boîtes englobantes des composantes ({x0, y0, x1, y1} avec x1/y1 exclusifs). */
 export function componentBounds(mask) {
   const bounds = [];

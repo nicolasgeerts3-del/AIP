@@ -123,12 +123,17 @@ async function scenario(baseUrl) {
     check(await evaluate(`${text('#maskCount')} === '0 cm²'`), 'compteur de défauts non nul au départ');
   });
 
-  await step('Import d’une photo (2:3) avec deux taches', async () => {
+  await step('Import d’une photo (2:3) avec trois taches et une ombre', async () => {
     await evaluate(`(async () => {
       const canvas = document.createElement('canvas'); canvas.width = 400; canvas.height = 600;
       const ctx = canvas.getContext('2d'); ctx.fillStyle = 'rgb(214,200,172)'; ctx.fillRect(0, 0, 400, 600);
       ctx.fillStyle = 'rgb(170,60,50)'; ctx.beginPath(); ctx.arc(100, 150, 20, 0, 7); ctx.fill();
       ctx.fillStyle = 'rgb(80,90,160)'; ctx.beginPath(); ctx.arc(300, 450, 15, 0, 7); ctx.fill();
+      // D-18 : tache de graisse, même teinte que le tissu mais 25 % plus sombre.
+      ctx.fillStyle = 'rgb(161,150,129)'; ctx.beginPath(); ctx.arc(100, 450, 15, 0, 7); ctx.fill();
+      // D-17 : ombre en dégradé sur toute la largeur (jusqu'à −35 %).
+      const shade = ctx.createLinearGradient(0, 0, 400, 0); shade.addColorStop(0, 'rgba(0,0,0,0)'); shade.addColorStop(1, 'rgba(0,0,0,0.35)');
+      ctx.fillStyle = shade; ctx.fillRect(0, 0, 400, 600);
       const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/png'));
       const transfer = new DataTransfer(); transfer.items.add(new File([blob], 'tissu.png', { type: 'image/png' }));
       const input = document.querySelector('#fileInput'); input.files = transfer.files;
@@ -149,12 +154,15 @@ async function scenario(baseUrl) {
     check(visible, 'l’image importée n’est pas visible dans le cadre');
   });
 
-  await step('Analyse automatique : taches détectées, tissu sain ignoré', async () => {
+  await step('[D-17][D-18] Analyse automatique : taches détectées, ombre et tissu sain ignorés', async () => {
     await evaluate("document.querySelector('#analyzeButton').click()");
     await waitFor(`${text('#analysisPill')} === 'ANALYSÉ'`);
     check(await evaluate(gridAt(0.25, 0.25)) === 1, 'tache rouge non détectée');
     check(await evaluate(gridAt(0.75, 0.75)) === 1, 'tache bleue non détectée');
-    check(await evaluate(gridAt(0.75, 0.25)) === 0, 'faux défaut sur tissu sain');
+    check(await evaluate(gridAt(0.25, 0.75)) === 1, '[D-18] tache de graisse non détectée');
+    check(await evaluate(gridAt(0.75, 0.25)) === 0, '[D-17] faux défaut dans la zone d’ombre');
+    const healthyDefects = await evaluate("(() => { const m = retissDebug.getMasks().gridMask; let n = 0; for (let y = 0; y < m.height; y += 1) for (let x = 0; x < m.width; x += 1) { const near = [[150, 225], [450, 675], [150, 675]].some(([cx, cy]) => (x - cx) ** 2 + (y - cy) ** 2 < 60 ** 2); if (!near && m.data[y * m.width + x]) n += 1; } return n; })()");
+    check(healthyDefects === 0, `[D-17] ${healthyDefects} cellules saines marquées comme défaut`);
     check(await evaluate("!document.querySelector('#planButton').disabled"), 'bouton Imbriquer désactivé');
     await waitFor(`${text('#maskCount')} !== '0 cm²'`, { message: 'compteur de défauts non mis à jour' });
   });

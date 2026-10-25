@@ -5,7 +5,7 @@ import {
   CELL_CM, CELL_MM, COLORS, DEFAULT_ORIENTATION_MODE, FABRIC, GRID, KIT, MAX_IMAGE_WIDTH, ORIENTATION_MODES, PIECES,
   SAFE_CLEARANCE_CELLS, STRATEGIES
 } from './src/config.js';
-import { computeChroma, detectDefects } from './src/core/detection.js';
+import { computeColorPlanes, detectDefects } from './src/core/detection.js';
 import { combineLayers, countMask, createMask, paintStroke, resampleMaxPool } from './src/core/mask.js';
 import { buildPieceShapes, nestPieces } from './src/core/nesting.js';
 import { computeSurfaceStats } from './src/core/stats.js';
@@ -47,7 +47,7 @@ function getShapes(mode) {
 }
 
 const state = {
-  image: null,        // { width, height, chroma } ; les pixels sont dans ui.captureCanvas
+  image: null,        // { width, height, planes } ; les pixels sont dans ui.captureCanvas
   autoMask: null,     // détection automatique, résolution de l'image
   addedMask: null,    // zones ajoutées au pinceau
   erasedMask: null,   // zones effacées au pinceau
@@ -159,7 +159,7 @@ function loadImage(source) {
   ui.sourcePreview.width = imageWidth; ui.sourcePreview.height = imageHeight;
   ui.sourcePreview.getContext('2d').drawImage(ui.captureCanvas, 0, 0);
 
-  state.image = { width: imageWidth, height: imageHeight, chroma: computeChroma(context.getImageData(0, 0, imageWidth, imageHeight)) };
+  state.image = { width: imageWidth, height: imageHeight, planes: computeColorPlanes(context.getImageData(0, 0, imageWidth, imageHeight)) };
   state.autoMask = createMask(imageWidth, imageHeight);
   state.addedMask = createMask(imageWidth, imageHeight);
   state.erasedMask = createMask(imageWidth, imageHeight);
@@ -184,7 +184,7 @@ function loadImage(source) {
 
 function runAnalysis() {
   if (!state.image) return;
-  const { mask } = detectDefects(state.image.chroma, { madFactor: Number(ui.sensitivity.value) });
+  const { mask } = detectDefects(state.image.planes, { madFactor: Number(ui.sensitivity.value) });
   state.autoMask = mask; state.analyzed = true;
   maskChanged();
   ui.analysisPill.textContent = 'ANALYSÉ';

@@ -30,9 +30,10 @@ export function rectMask(width, height, rects) {
 
 /**
  * Image RGBA de tissu beige légèrement bruité, avec des taches circulaires
- * { cx, cy, r, color: [r, g, b] }. Renvoie un objet compatible ImageData.
+ * { cx, cy, r, color: [r, g, b] }. `illumination(x, y)` renvoie un facteur
+ * multiplicatif (ombre, dégradé d'éclairage). Renvoie un objet compatible ImageData.
  */
-export function fabricImage(width, height, { base = [214, 200, 172], noise = 6, stains = [], seed = 7 } = {}) {
+export function fabricImage(width, height, { base = [214, 200, 172], noise = 6, stains = [], seed = 7, illumination = () => 1 } = {}) {
   const random = seededRandom(seed);
   const data = new Uint8ClampedArray(width * height * 4);
   for (let y = 0; y < height; y += 1) {
@@ -41,7 +42,8 @@ export function fabricImage(width, height, { base = [214, 200, 172], noise = 6, 
       let color = base;
       for (const stain of stains) if ((x - stain.cx) ** 2 + (y - stain.cy) ** 2 <= stain.r ** 2) color = stain.color;
       const jitter = (random() - 0.5) * 2 * noise;
-      data[out] = color[0] + jitter; data[out + 1] = color[1] + jitter; data[out + 2] = color[2] + jitter; data[out + 3] = 255;
+      const light = illumination(x, y);
+      data[out] = (color[0] + jitter) * light; data[out + 1] = (color[1] + jitter) * light; data[out + 2] = (color[2] + jitter) * light; data[out + 3] = 255;
     }
   }
   return { width, height, data };
