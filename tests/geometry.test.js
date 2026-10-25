@@ -31,7 +31,7 @@ describe('polygones', () => {
 describe('rasterizePiece', () => {
   for (const [name, polygon] of Object.entries(PIECES)) {
     for (const angle of [0, 15, 45, 90, 135, 270, 345]) {
-      it(`${name} à ${angle}° : cellules et contour dans le même repère`, () => {
+      it(`[D-01] ${name} à ${angle}° : cellules et contour dans le même repère`, () => {
         const shape = rasterizePiece(polygon, angle, CELL_CM);
         const outlineBox = polygonBounds(shape.outline);
         // Le contour tient dans la boîte des cellules (régression : décalage de 26 × 55 cm).

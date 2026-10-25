@@ -113,7 +113,7 @@ describe('combineLayers', () => {
 });
 
 describe('resampleMaxPool', () => {
-  it('ne perd jamais un défaut d’un pixel en réduisant la résolution (régression)', () => {
+  it('[D-03] ne perd jamais un défaut d’un pixel en réduisant la résolution', () => {
     for (const [x, y] of [[0, 0], [699, 0], [350, 466], [698, 932], [123, 777]]) {
       const source = createMask(700, 933); source.data[y * 700 + x] = 1;
       const grid = resampleMaxPool(source, 600, 900);
@@ -157,7 +157,7 @@ describe('pinceau', () => {
     assert.ok(countMask(mask) < 25);
   });
 
-  it('paintStroke trace un trait continu même pour un mouvement rapide (régression)', () => {
+  it('[D-09] paintStroke trace un trait continu même pour un mouvement rapide', () => {
     const mask = createMask(200, 20);
     paintStroke(mask, { x: 5, y: 10 }, { x: 195, y: 10 }, 2, 2, 1);
     for (let x = 5; x < 195; x += 1) assert.equal(mask.data[10 * 200 + x], 1, `trou en x=${x}`);

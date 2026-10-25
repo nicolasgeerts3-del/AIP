@@ -29,7 +29,7 @@ describe('median', () => {
     assert.equal(median([-5]), -5);
   });
 
-  it('ne modifie pas le tableau reçu (régression : désalignement a*/b*)', () => {
+  it('[D-02] ne modifie pas le tableau reçu (sinon a* et b* se désalignent)', () => {
     const values = [5, 1, 4, 2, 3];
     median(values);
     assert.deepEqual(values, [5, 1, 4, 2, 3]);

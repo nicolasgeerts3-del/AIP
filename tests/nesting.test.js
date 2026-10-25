@@ -52,7 +52,7 @@ describe('collides', () => {
     assert.ok(collides(shape, 200 - shape.minX - shape.width + 1, -shape.minY, occupancy, integral));
   });
 
-  it('équivaut à un test cellule par cellule (régression : faux rejets du raccourci)', () => {
+  it('[D-04] équivaut à un test cellule par cellule', () => {
     for (const seed of [1, 2, 3, 4]) {
       const occupancy = randomMask(160, 160, 0.0015 * seed, seed);
       const integral = buildIntegral(occupancy);
@@ -69,7 +69,7 @@ describe('collides', () => {
     }
   });
 
-  it('accepte une pièce dont seuls les coins vides de la boîte sont occupés', () => {
+  it('[D-04] accepte une pièce dont seuls les coins vides de la boîte sont occupés', () => {
     const triangle = buildPieceShapes({ T: [[0, 0], [20, 0], [0, 20]] }, { cellCm: 1, rotationStepDeg: 360 }).T[0];
     const occupancy = createMask(60, 60);
     const x = 20 - triangle.minX; const y = 20 - triangle.minY;
@@ -110,7 +110,7 @@ describe('scores', () => {
     assert.equal(countCompleteKits([], KIT), 0);
   });
 
-  it('préfère plus de T-shirts complets à plus de pièces (régression)', () => {
+  it('[D-05] préfère plus de T-shirts complets à plus de pièces', () => {
     const manySleeves = scorePlan(Array.from({ length: 12 }, () => fake('MANCHE')));
     const oneKit = scorePlan(['DOS', 'DEVANT', 'BANDE', 'MANCHE', 'MANCHE'].map(fake));
     assert.ok(isBetterScore(oneKit, manySleeves));
@@ -188,7 +188,7 @@ describe('nestPieces', () => {
     assert.ok(result.validation.ok);
   });
 
-  it('s’arrête proprement si le masque change pendant le calcul', async () => {
+  it('[D-08] s’arrête proprement si le masque change pendant le calcul', async () => {
     let calls = 0;
     const result = await nestPieces({ gridMask: createMask(width, height), shapes, yieldToUi: instant, shouldAbort: () => (calls += 1) > 3 });
     assert.equal(result.aborted, true);

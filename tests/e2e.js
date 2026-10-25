@@ -140,7 +140,7 @@ async function scenario(baseUrl) {
     check(await evaluate(`${text('#statusText')}.includes('proportions conservées')`), 'statut inattendu');
   });
 
-  await step('L’aperçu de la photo est visible (pas masqué par la vidéo)', async () => {
+  await step('[D-11] L’aperçu de la photo est visible (pas masqué par la vidéo)', async () => {
     const visible = await evaluate(`(() => {
       const stage = document.querySelector('#cameraStage').getBoundingClientRect();
       const preview = document.querySelector('#sourcePreview').getBoundingClientRect();
@@ -159,13 +159,13 @@ async function scenario(baseUrl) {
     await waitFor(`${text('#maskCount')} !== '0 cm²'`, { message: 'compteur de défauts non mis à jour' });
   });
 
-  await step('Pinceau « ajouter » : trait continu, plan invalidé', async () => {
+  await step('[D-09] Pinceau « ajouter » : trait continu, plan invalidé', async () => {
     await drag([[0.5, 0.1], [0.9, 0.1]]);
     for (const fx of [0.55, 0.65, 0.75, 0.85]) check(await evaluate(gridAt(fx, 0.1)) === 1, `trou dans le trait en x=${fx}`);
     check(await evaluate(`${text('#optimizationState')} === 'À RECALCULER'`), 'le plan n’est pas marqué à recalculer');
   });
 
-  await step('Curseur MAD : recalcule sans perdre les retouches manuelles', async () => {
+  await step('[D-07] Curseur MAD : recalcule sans perdre les retouches manuelles', async () => {
     await evaluate("(() => { const s = document.querySelector('#sensitivity'); s.value = '6'; s.dispatchEvent(new Event('input')); })()");
     await delay(150);
     check(await evaluate(`${text('#sensitivityValue')} === '6.0'`), 'valeur du curseur non affichée');
@@ -186,7 +186,7 @@ async function scenario(baseUrl) {
     await evaluate("document.querySelector('#addTool').click()");
   });
 
-  await step('Imbrication : plan valide qui évite les taches', async () => {
+  await step('[D-01] Imbrication : plan valide qui évite les taches', async () => {
     await evaluate("document.querySelector('#planButton').click()");
     await waitFor(`${text('#optimizationState')} === 'TERMINÉ'`, { timeout: 90000, message: 'nesting non terminé en 90 s' });
     const report = await evaluate(`(async () => {
@@ -211,7 +211,7 @@ async function scenario(baseUrl) {
     return undefined;
   });
 
-  await step('Retouche pendant le calcul : résultat périmé rejeté', async () => {
+  await step('[D-08] Retouche pendant le calcul : résultat périmé rejeté', async () => {
     await evaluate("document.querySelector('#planButton').click()");
     await drag([[0.6, 0.5], [0.62, 0.5]]);
     await waitFor("!retissDebug.state.nesting", { timeout: 90000 });
@@ -231,7 +231,7 @@ async function scenario(baseUrl) {
     return undefined;
   });
 
-  await step('Caméra (périphérique simulé) : capture puis arrêt', async () => {
+  await step('[D-12] Caméra (périphérique simulé) : capture puis arrêt', async () => {
     await evaluate("document.querySelector('#cameraButton').click()");
     await waitFor("!document.querySelector('#captureButton').disabled", { message: 'caméra non démarrée' });
     await evaluate("document.querySelector('#captureButton').click()");

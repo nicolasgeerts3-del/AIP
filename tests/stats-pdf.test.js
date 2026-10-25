@@ -76,7 +76,7 @@ describe('buildCutPlanPdf', () => {
     assert.equal(pdf.options.format, 'a4');
   });
 
-  it('dessine une pièce sur toutes les pages qu’elle traverse, même sans sommet dedans (régression)', () => {
+  it('[D-06] dessine une pièce sur toutes les pages qu’elle traverse, même sans sommet dedans', () => {
     // Bande verticale de 58 cm qui traverse entièrement la 2e rangée de pages (277 mm).
     const band = place('BANDE', 40, 50, 1);
     const pdf = buildCutPlanPdf(RecorderPdf, { placements: [band], completeKits: 0, fabric: FABRIC, cellMm: CELL_MM, colors: COLORS });
