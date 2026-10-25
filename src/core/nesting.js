@@ -47,7 +47,7 @@ export function collides(shape, x, y, occupancy, integral) {
   const stride = occupancy.width + 1;
   const occupiedInBox = integral[box.y1 * stride + box.x1] - integral[box.y0 * stride + box.x1]
     - integral[box.y1 * stride + box.x0] + integral[box.y0 * stride + box.x0];
-  // Raccourci : boîte entièrement libre → aucune collision possible.
+  // Raccourci : boîte entièrement libre → aucune collision possible (D-04).
   if (occupiedInBox === 0) return false;
   for (let row = 0; row < shape.height; row += 1) {
     const rowOffset = (box.y0 + row) * occupancy.width + box.x0;
@@ -150,7 +150,7 @@ export function scorePlan(placements, kit = KIT) {
   };
 }
 
-/** Priorité : T-shirts complets, puis surface utilisée, puis nombre de pièces. */
+/** Priorité : T-shirts complets, puis surface utilisée, puis nombre de pièces (D-05). */
 export function isBetterScore(candidate, reference) {
   if (candidate.completeKits !== reference.completeKits) return candidate.completeKits > reference.completeKits;
   if (Math.abs(candidate.usedAreaCm2 - reference.usedAreaCm2) > 1e-9) return candidate.usedAreaCm2 > reference.usedAreaCm2;
@@ -218,7 +218,7 @@ export async function runStrategy({ order, gridMask, shapes, clearance, maxKits,
 
 /**
  * Essaie chaque stratégie et garde le meilleur plan, puis le revalide.
- * onProgress(fraction 0–1) ; shouldAbort() permet d'annuler si le masque change.
+ * onProgress(fraction 0–1) ; shouldAbort() permet d'annuler si une entrée change (D-08).
  * Renvoie { placements, score, strategyIndex, validation, aborted }.
  */
 export async function nestPieces({

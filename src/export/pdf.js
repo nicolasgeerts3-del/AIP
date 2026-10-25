@@ -30,7 +30,7 @@ export function outlineMm(placement, cellMm) {
   return placementOutline(placement).map(([x, y]) => [x * cellMm, y * cellMm]);
 }
 
-/** Vrai si la boîte du polygone recoupe la tuile (un contour peut traverser une page sans y avoir de sommet). */
+/** Vrai si la boîte du polygone recoupe la tuile (un contour peut traverser une page sans y avoir de sommet, D-06). */
 export function polygonTouchesTile(polygon, tile) {
   const box = polygonBounds(polygon);
   return box.maxX >= tile.x && box.minX <= tile.x + tile.width && box.maxY >= tile.y && box.minY <= tile.y + tile.height;

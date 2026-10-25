@@ -37,7 +37,7 @@ export function validatePolygon(polygon) {
  * Tourne le patron autour du centre de sa boîte englobante puis le rastérise
  * sur une grille de pas cellCm.
  *
- * Repère : une forme placée à l'origine (x, y) occupe les cellules
+ * Repère (D-01) : une forme placée à l'origine (x, y) occupe les cellules
  * (x + minX + colonne, y + minY + ligne) et son contour est `outline` décalé de
  * (x, y). Cellules et contour partagent donc exactement le même repère.
  *
@@ -83,7 +83,7 @@ export function rasterizePiece(polygon, angleDeg, cellCm) {
   return { angle: angleDeg, minX, minY, width, height, rows, offsets, cellCount: offsets.length, outline, areaCm2: polygonArea(polygon) };
 }
 
-/** Contour d'une pièce placée, en coordonnées de grille (cellules). */
+/** Contour d'une pièce placée, en coordonnées de grille (cellules), dans le repère de ses cellules (D-01). */
 export function placementOutline(placement) {
   return placement.shape.outline.map(([x, y]) => [placement.x + x, placement.y + y]);
 }

@@ -31,7 +31,7 @@ export function assertSameSize(...masks) {
   }
 }
 
-/** Masque final = (détection automatique OU ajouts manuels) ET NON effacements manuels. */
+/** Masque final = (détection automatique OU ajouts manuels) ET NON effacements manuels (D-07). */
 export function combineLayers(base, added, erased) {
   assertSameSize(base, added, erased);
   const output = createMask(base.width, base.height);
@@ -146,7 +146,7 @@ export function componentBounds(mask) {
 /**
  * Change la résolution d'un masque. Une cellule cible vaut 1 si AU MOINS un
  * pixel source qu'elle recouvre vaut 1 : en réduisant la résolution, un petit
- * défaut ne peut donc jamais disparaître.
+ * défaut ne peut donc jamais disparaître (D-03).
  */
 export function resampleMaxPool(mask, targetWidth, targetHeight) {
   const output = createMask(targetWidth, targetHeight);
@@ -196,7 +196,7 @@ export function paintEllipse(mask, cx, cy, rx, ry, value) {
   return changed;
 }
 
-/** Peint un trait continu entre deux points (pas de trous si la souris va vite). */
+/** Peint un trait continu entre deux points (pas de trous si la souris va vite, D-09). */
 export function paintStroke(mask, from, to, rx, ry, value) {
   const step = Math.max(0.5, Math.min(rx, ry) * 0.5);
   const distance = Math.hypot(to.x - from.x, to.y - from.y);

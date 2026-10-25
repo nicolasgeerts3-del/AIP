@@ -192,7 +192,7 @@ function loadImage(source) {
   ui.cameraStage.style.aspectRatio = `${ratio}`;
   ui.maskStage.style.aspectRatio = `${ratio}`;
   ui.cameraStage.classList.add('has-image'); ui.cameraPlaceholder.classList.add('hidden');
-  ui.analyzeButton.disabled = false; ui.analysisPill.textContent = 'PRÊT'; ui.analysisSummary.textContent = DEFAULT_SUMMARY;
+  ui.analyzeButton.disabled = false; ui.analysisPill.textContent = 'PRÊT'; ui.analysisSummary.textContent = DEFAULT_SUMMARY; // D-16
   ui.stepAnalyze.classList.remove('active'); ui.planButton.disabled = true;
   setProgress(0, 'Nesting en attente');
   invalidatePlan(); renderMask();
@@ -308,7 +308,7 @@ function eventToImagePoint(event) {
   };
 }
 
-/** Rayons du pinceau en pixels image : le diamètre affiché est en cm sur le tissu. */
+/** Rayons du pinceau en pixels image : le diamètre affiché est en cm sur le tissu, en x comme en y (D-10). */
 function brushRadii() {
   const radiusCm = Number(ui.brushSize.value) / 2;
   return { rx: radiusCm * state.image.width / state.fabric.widthCm, ry: radiusCm * state.image.height / state.fabric.heightCm };
@@ -343,7 +343,7 @@ async function runNesting() {
     const result = await nestPieces({
       gridMask, shapes, strategies: STRATEGIES, clearance: SAFE_CLEARANCE_CELLS, kit: KIT,
       onProgress: (fraction) => setProgress(fraction * 100, `Optimisation · ${Math.round(fraction * 100)} %`),
-      shouldAbort: () => state.inputVersion !== version
+      shouldAbort: () => state.inputVersion !== version // D-08 : résultat périmé si une entrée a changé
     });
     if (result.aborted) {
       setProgress(0, 'Calcul interrompu');
@@ -377,7 +377,10 @@ async function runNesting() {
 async function exportPdf() {
   if (!state.plan?.placements.length) return;
   const JsPdf = window.jspdf?.jsPDF;
-  if (!JsPdf) { setStatus('PDF indisponible : la bibliothèque jsPDF n’a pas pu être chargée (connexion Internet ?)'); return; }
+  if (!JsPdf) { // D-14
+    setStatus('PDF indisponible : la bibliothèque jsPDF n’a pas pu être chargée (connexion Internet ?)');
+    return;
+  }
   ui.downloadButton.disabled = true; setStatus('Génération du PDF…');
   await new Promise((resolve) => setTimeout(resolve, 30)); // laisse le navigateur afficher le statut
   try {
@@ -413,13 +416,13 @@ ui.cameraButton.addEventListener('click', guard(async () => {
 
 ui.captureButton.addEventListener('click', guard(() => {
   loadSource(ui.video);
-  stopCamera(state.stream); state.stream = null;
+  stopCamera(state.stream); state.stream = null; // D-12
   ui.captureButton.disabled = true;
 }));
 
 ui.fileInput.addEventListener('change', () => {
   const file = ui.fileInput.files[0];
-  ui.fileInput.value = ''; // permet de réimporter le même fichier
+  ui.fileInput.value = ''; // D-13 : permet de réimporter le même fichier
   if (!file) return;
   const image = new Image(); const url = URL.createObjectURL(file);
   image.onload = guard(() => { URL.revokeObjectURL(url); loadSource(image); });
