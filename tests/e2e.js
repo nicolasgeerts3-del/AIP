@@ -186,7 +186,7 @@ async function scenario(baseUrl) {
     await evaluate("document.querySelector('#addTool').click()");
   });
 
-  await step('[D-01] Imbrication : plan valide qui évite les taches', async () => {
+  await step('[D-01][D-21] Imbrication : plan valide, hors taches, droit-fil respecté', async () => {
     await evaluate("document.querySelector('#planButton').click()");
     await waitFor(`${text('#optimizationState')} === 'TERMINÉ'`, { timeout: 90000, message: 'nesting non terminé en 90 s' });
     const report = await evaluate(`(async () => {
@@ -197,7 +197,8 @@ async function scenario(baseUrl) {
       const stains = [[150, 225], [450, 675]];
       const overlap = placements.some((p) => stains.some(([x, y]) => pointInPolygon(x, y, placementOutline(p))));
       const outside = placements.some((p) => placementOutline(p).some(([x, y]) => x < -1e-6 || y < -1e-6 || x > grid.width + 1e-6 || y > grid.height + 1e-6));
-      return { count: placements.length, valid: validatePlan(placements, grid).ok, overlap, outside, kits: retissDebug.state.plan.stats.completeKits };
+      const grain = placements.every((p) => p.shape.angle % 180 === 0);
+      return { count: placements.length, valid: validatePlan(placements, grid).ok, overlap, outside, grain, kits: retissDebug.state.plan.stats.completeKits };
     })()`);
     const png = await evaluate("document.querySelector('#resultCanvas').toDataURL('image/png').split(',')[1]");
     writeFileSync(join(tmpdir(), 'retiss-e2e-plan.png'), Buffer.from(png, 'base64'));
@@ -205,6 +206,8 @@ async function scenario(baseUrl) {
     check(report.valid, 'le plan affiché ne passe pas le contrôle');
     check(!report.overlap, 'une pièce recouvre une tache');
     check(!report.outside, 'une pièce dessinée sort du tissu');
+    check(report.grain, '[D-21] une pièce ne respecte pas le droit-fil');
+    check(await evaluate("document.querySelector('#orientationMode').value === 'droit-fil'"), '[D-21] le mode par défaut n’est pas le droit-fil');
     check(report.kits >= 8, `seulement ${report.kits} T-shirts complets`);
     check(await evaluate("document.querySelector('#resultEmpty').style.display === 'none' && !document.querySelector('#downloadButton').disabled"), 'résultat non affiché ou PDF indisponible');
     check(await evaluate(`[...document.querySelectorAll('#resultStats strong')][0].textContent === String(${report.kits})`), 'statistiques non mises à jour');

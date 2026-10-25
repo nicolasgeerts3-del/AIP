@@ -1,12 +1,12 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { CELL_CM, CELL_MM, COLORS, FABRIC, PIECES } from '../src/config.js';
+import { CELL_CM, CELL_MM, COLORS, FABRIC, ORIENTATION_MODES, PIECES } from '../src/config.js';
 import { buildPieceShapes } from '../src/core/nesting.js';
 import { computeSurfaceStats } from '../src/core/stats.js';
 import { A4, buildCutPlanPdf, computeTiles, outlineMm, polygonTouchesTile } from '../src/export/pdf.js';
 import { rectMask } from './helpers/fixtures.js';
 
-const shapes = buildPieceShapes(PIECES, { cellCm: CELL_CM, rotationStepDeg: 90 });
+const shapes = buildPieceShapes(PIECES, { cellCm: CELL_CM, angles: ORIENTATION_MODES.quarts.angles });
 const place = (name, left, top, angleIndex = 0, pass = 1) => {
   const shape = shapes[name][angleIndex];
   return { name, pass, shape, x: left - shape.minX, y: top - shape.minY };

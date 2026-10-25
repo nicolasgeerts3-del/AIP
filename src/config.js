@@ -18,8 +18,18 @@ export const GRID = Object.freeze({
 /** Marge de sécurité autour des défauts et entre les pièces (2 cellules = 1 cm). */
 export const SAFE_CLEARANCE_CELLS = 2;
 
-/** Pas angulaire testé pour chaque pièce (15° → 24 orientations). */
-export const ROTATION_STEP_DEG = 15;
+/**
+ * Orientations autorisées pour les pièces (D-21). Les patrons sont dessinés
+ * avec le droit-fil vertical, aligné sur la longueur du tissu : seuls 0° et
+ * 180° le respectent. Les autres modes gagnent un peu de matière mais
+ * déforment le vêtement.
+ */
+export const ORIENTATION_MODES = Object.freeze({
+  'droit-fil': { label: 'Droit-fil (0° / 180°)', angles: [0, 180] },
+  quarts: { label: 'Quarts de tour (0° / 90° / 180° / 270°)', angles: [0, 90, 180, 270] },
+  libre: { label: 'Libre, pas de 15° (ignore le droit-fil)', angles: Array.from({ length: 24 }, (_, index) => index * 15) }
+});
+export const DEFAULT_ORIENTATION_MODE = 'droit-fil';
 
 /** Largeur maximale de l'image analysée (en pixels). */
 export const MAX_IMAGE_WIDTH = 700;

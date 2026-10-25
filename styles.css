@@ -4,3 +4,4 @@
 /* Une image importée ou capturée remplace le flux vidéo ; le pinceau ne doit pas faire défiler la page sur écran tactile. */
 .camera-stage.has-image video{display:none}
 .mask-stage canvas{touch-action:none;cursor:crosshair}
+.select-input{font:inherit;font-size:13px;padding:9px 10px;border:1px solid var(--line);border-radius:2px;background:var(--paper);color:var(--ink);width:100%}

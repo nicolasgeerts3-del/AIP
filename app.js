@@ -1,7 +1,10 @@
 // Contrôleur de l'interface : relie le DOM, l'état de l'application et les
 // modules de src/. Aucun calcul métier ici : détection, nesting, statistiques
 // et PDF vivent dans src/core et src/export, testés sans navigateur.
-import { CELL_CM, CELL_MM, COLORS, FABRIC, GRID, KIT, MAX_IMAGE_WIDTH, PIECES, ROTATION_STEP_DEG, SAFE_CLEARANCE_CELLS, STRATEGIES } from './src/config.js';
+import {
+  CELL_CM, CELL_MM, COLORS, DEFAULT_ORIENTATION_MODE, FABRIC, GRID, KIT, MAX_IMAGE_WIDTH, ORIENTATION_MODES, PIECES,
+  SAFE_CLEARANCE_CELLS, STRATEGIES
+} from './src/config.js';
 import { computeChroma, detectDefects } from './src/core/detection.js';
 import { combineLayers, countMask, createMask, paintStroke, resampleMaxPool } from './src/core/mask.js';
 import { buildPieceShapes, nestPieces } from './src/core/nesting.js';
@@ -26,7 +29,7 @@ const ui = {
   stepAnalyze: $('#stepAnalyze'), stepPlan: $('#stepPlan'),
   maskStage: $('.mask-stage'), maskCanvas: $('#maskCanvas'), editorEmpty: $('#editorEmpty'), maskCount: $('#maskCount'),
   addTool: $('#addTool'), eraseTool: $('#eraseTool'), brushSize: $('#brushSize'), brushValue: $('#brushValue'),
-  resetMaskButton: $('#resetMaskButton'), planButton: $('#planButton'),
+  resetMaskButton: $('#resetMaskButton'), orientationMode: $('#orientationMode'), planButton: $('#planButton'),
   progressBar: $('#progressBar'), progressText: $('#progressText'),
   resultCanvas: $('#resultCanvas'), resultEmpty: $('#resultEmpty'), resultStats: $('#resultStats'),
   optimizationState: $('#optimizationState'), downloadButton: $('#downloadButton')
@@ -34,7 +37,14 @@ const ui = {
 
 const DEFAULT_SUMMARY = ui.analysisSummary.textContent;
 const CELL_AREA_CM2 = CELL_CM * CELL_CM;
-const shapes = buildPieceShapes(PIECES, { cellCm: CELL_CM, rotationStepDeg: ROTATION_STEP_DEG });
+
+// D-21 : formes rastérisées par mode d'orientation, calculées à la demande.
+const shapesByMode = new Map();
+function getShapes(mode) {
+  if (!ORIENTATION_MODES[mode]) throw new Error(`Mode d’orientation inconnu : ${mode}`);
+  if (!shapesByMode.has(mode)) shapesByMode.set(mode, buildPieceShapes(PIECES, { cellCm: CELL_CM, angles: ORIENTATION_MODES[mode].angles }));
+  return shapesByMode.get(mode);
+}
 
 const state = {
   image: null,        // { width, height, chroma } ; les pixels sont dans ui.captureCanvas
@@ -48,6 +58,7 @@ const state = {
   nesting: false,
   stream: null,
   brushMode: 'add',
+  orientationMode: DEFAULT_ORIENTATION_MODE,
   painting: false,
   lastPoint: null,    // dernier point du trait en cours, en pixels image
   maskRenderQueued: false,
@@ -221,6 +232,7 @@ async function runNesting() {
   if (state.nesting || !state.image) return;
   const version = state.maskVersion;
   const { gridMask } = getMasks();
+  const shapes = getShapes(state.orientationMode);
   state.nesting = true;
   ui.planButton.disabled = true; ui.optimizationState.textContent = 'CALCUL…';
   setProgress(0, 'Optimisation · 0 %');
@@ -349,10 +361,19 @@ const endStroke = () => { state.painting = false; state.lastPoint = null; };
 ui.maskCanvas.addEventListener('pointerup', endStroke);
 ui.maskCanvas.addEventListener('pointercancel', endStroke);
 
+ui.orientationMode.replaceChildren(...Object.entries(ORIENTATION_MODES).map(([value, { label }]) => new Option(label, value, false, value === state.orientationMode)));
+ui.orientationMode.addEventListener('change', () => {
+  state.orientationMode = ui.orientationMode.value;
+  // Un plan calculé avec d'autres orientations n'est plus valable.
+  state.maskVersion += 1;
+  invalidatePlan();
+  setStatus(state.orientationMode === 'droit-fil' ? 'Pièces alignées sur le droit-fil' : 'Attention : ce mode ne respecte pas le droit-fil');
+});
+
 ui.planButton.addEventListener('click', guard(runNesting));
 ui.downloadButton.addEventListener('click', guard(exportPdf));
 
 renderMask(); renderStats();
 
 // Accès en lecture pour les tests de bout en bout (tests/e2e.js).
-window.retissDebug = Object.freeze({ get state() { return state; }, getMasks, shapes });
+window.retissDebug = Object.freeze({ get state() { return state; }, getMasks, getShapes });

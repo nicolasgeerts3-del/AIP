@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { CELL_CM, KIT, PIECES, SAFE_CLEARANCE_CELLS, STRATEGIES } from '../src/config.js';
+import { CELL_CM, DEFAULT_ORIENTATION_MODE, KIT, ORIENTATION_MODES, PIECES, SAFE_CLEARANCE_CELLS, STRATEGIES } from '../src/config.js';
 import { placementOutline, pointInPolygon, polygonBounds } from '../src/core/geometry.js';
 import { createMask, dilate } from '../src/core/mask.js';
 import {
@@ -19,8 +19,8 @@ function speckledGrid(count, seed = 1) {
   return rectMask(600, 900, rects);
 }
 
-// Pas de 90° pour garder les tests rapides ; le pas de 15° est testé en bout de chaîne (e2e).
-const shapes = buildPieceShapes(PIECES, { cellCm: CELL_CM, rotationStepDeg: 90 });
+// Quarts de tour pour garder les tests rapides ; les autres modes sont testés à part.
+const shapes = buildPieceShapes(PIECES, { cellCm: CELL_CM, angles: ORIENTATION_MODES.quarts.angles });
 const instant = async () => {};
 
 /** Vérification géométrique indépendante : aucune cellule défectueuse sous le contour d'une pièce. */
@@ -40,14 +40,29 @@ function assertOutlinesAvoidDefects(placements, gridMask) {
 }
 
 describe('buildPieceShapes', () => {
-  it('crée 360 / pas orientations par pièce', () => {
+  it('crée une forme par orientation autorisée, sans doublon', () => {
     assert.equal(shapes.DOS.length, 4);
-    assert.equal(buildPieceShapes({ BANDE: PIECES.BANDE }, { cellCm: CELL_CM, rotationStepDeg: 15 }).BANDE.length, 24);
+    assert.equal(buildPieceShapes({ BANDE: PIECES.BANDE }, { cellCm: CELL_CM, angles: ORIENTATION_MODES.libre.angles }).BANDE.length, 24);
+    assert.equal(buildPieceShapes({ BANDE: PIECES.BANDE }, { cellCm: CELL_CM, angles: [0, 360, -180, 180] }).BANDE.length, 2);
   });
 
-  it('refuse un pas qui ne divise pas 360°', () => {
-    assert.throws(() => buildPieceShapes(PIECES, { cellCm: CELL_CM, rotationStepDeg: 7 }), RangeError);
-    assert.throws(() => buildPieceShapes(PIECES, { cellCm: CELL_CM, rotationStepDeg: 0 }), RangeError);
+  it('refuse une liste d’orientations vide ou invalide', () => {
+    assert.throws(() => buildPieceShapes(PIECES, { cellCm: CELL_CM, angles: [] }), RangeError);
+    assert.throws(() => buildPieceShapes(PIECES, { cellCm: CELL_CM, angles: [0, Number.NaN] }), RangeError);
+  });
+});
+
+describe('[D-21] droit-fil', () => {
+  it('[D-21] le mode par défaut ne garde que 0° et 180°', () => {
+    assert.deepEqual(ORIENTATION_MODES[DEFAULT_ORIENTATION_MODE].angles, [0, 180]);
+  });
+
+  it('[D-21] en mode droit-fil, toutes les pièces placées gardent le droit-fil vertical', async () => {
+    const grainShapes = buildPieceShapes(PIECES, { cellCm: CELL_CM, angles: ORIENTATION_MODES['droit-fil'].angles });
+    const result = await nestPieces({ gridMask: createMask(600, 900), shapes: grainShapes, yieldToUi: instant });
+    assert.ok(result.validation.ok);
+    assert.ok(result.placements.every((placement) => placement.shape.angle % 180 === 0));
+    assert.ok(result.score.completeKits >= 10, `seulement ${result.score.completeKits} T-shirts`);
   });
 });
 
@@ -80,7 +95,7 @@ describe('collides', () => {
   });
 
   it('[D-04] accepte une pièce dont seuls les coins vides de la boîte sont occupés', () => {
-    const triangle = buildPieceShapes({ T: [[0, 0], [20, 0], [0, 20]] }, { cellCm: 1, rotationStepDeg: 360 }).T[0];
+    const triangle = buildPieceShapes({ T: [[0, 0], [20, 0], [0, 20]] }, { cellCm: 1, angles: [0] }).T[0];
     const occupancy = createMask(60, 60);
     const x = 20 - triangle.minX; const y = 20 - triangle.minY;
     for (let dy = 12; dy < 20; dy += 1) for (let dx = 12; dx < 20; dx += 1) occupancy.data[(20 + dy) * 60 + 20 + dx] = 1;
@@ -245,7 +260,7 @@ describe('[D-23] tissu avec beaucoup de petites taches', () => {
   });
 
   it('[D-23] 50 taches, rotations de 15° : au moins 8 T-shirts (résultat de l’ancien calcul exact) en moins de 20 s', async () => {
-    const fineShapes = buildPieceShapes(PIECES, { cellCm: CELL_CM, rotationStepDeg: 15 });
+    const fineShapes = buildPieceShapes(PIECES, { cellCm: CELL_CM, angles: ORIENTATION_MODES.libre.angles });
     const start = Date.now();
     const result = await nestPieces({ gridMask: speckledGrid(50, 51), shapes: fineShapes, yieldToUi: instant });
     const seconds = (Date.now() - start) / 1000;

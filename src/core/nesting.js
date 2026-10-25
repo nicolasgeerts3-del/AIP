@@ -7,12 +7,13 @@ import { KIT, SAFE_CLEARANCE_CELLS, STRATEGIES } from '../config.js';
 import { rasterizePiece } from './geometry.js';
 import { componentBounds, dilate } from './mask.js';
 
-/** Pré-calcule toutes les orientations de chaque patron : { NOM: shape[] }. */
-export function buildPieceShapes(pieces, { cellCm, rotationStepDeg }) {
-  if (!(rotationStepDeg > 0) || 360 % rotationStepDeg !== 0) throw new RangeError(`Le pas de rotation doit diviser 360° : ${rotationStepDeg}`);
-  const angles = [];
-  for (let angle = 0; angle < 360; angle += rotationStepDeg) angles.push(angle);
-  return Object.fromEntries(Object.entries(pieces).map(([name, polygon]) => [name, angles.map((angle) => rasterizePiece(polygon, angle, cellCm))]));
+/** Pré-calcule les orientations autorisées de chaque patron : { NOM: shape[] }. */
+export function buildPieceShapes(pieces, { cellCm, angles }) {
+  if (!Array.isArray(angles) || angles.length === 0 || !angles.every(Number.isFinite)) {
+    throw new RangeError(`Liste d’orientations invalide : ${JSON.stringify(angles)}`);
+  }
+  const unique = [...new Set(angles.map((angle) => ((angle % 360) + 360) % 360))];
+  return Object.fromEntries(Object.entries(pieces).map(([name, polygon]) => [name, unique.map((angle) => rasterizePiece(polygon, angle, cellCm))]));
 }
 
 /** Image intégrale : integral[(y) * (w + 1) + x] = nombre de cellules occupées dans [0, x[ × [0, y[. */
