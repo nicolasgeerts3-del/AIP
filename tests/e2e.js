@@ -319,6 +319,25 @@ async function scenario(baseUrl) {
     check(await evaluate(gridAt(0.5, 0.5)) === 1, 'tache perdue après changement de taille');
   });
 
+  await step('[D-32] Autre caméra : liste, choix, flux en direct, figer l’image', async () => {
+    await evaluate("document.querySelector('#externalCameraButton').click()");
+    await waitFor("document.querySelector('#cameraDialog').open", { message: 'fenêtre non ouverte' });
+    await waitFor("document.querySelector('#cameraSelect').options.length > 0 && document.querySelector('#cameraSelect').options[0].value !== ''", { message: 'aucune caméra listée' });
+    const label = await evaluate("document.querySelector('#cameraSelect').selectedOptions[0].textContent");
+    check(label && !/^Caméra d/.test(label), `nom de caméra non obtenu : « ${label} »`);
+    check(await evaluate(`${text('#cameraDialogStatus')}.includes('trouvée')`), 'statut de la recherche absent');
+    await evaluate("document.querySelector('#useCameraButton').click()");
+    await waitFor("!document.querySelector('#captureButton').disabled", { message: 'flux non démarré' });
+    check(await evaluate("!document.querySelector('#cameraDialog').open"), 'la fenêtre reste ouverte');
+    check(await evaluate("retissDebug.state.cameraDeviceId === document.querySelector('#cameraSelect').value"), 'caméra choisie non mémorisée');
+    check(await evaluate("document.querySelector('#video').videoWidth > 0 && getComputedStyle(document.querySelector('#video')).display !== 'none'"), 'flux en direct non affiché');
+    check(await evaluate(`${text('#statusText')}.includes('connectée')`), 'statut de connexion absent');
+    await evaluate("document.querySelector('#captureButton').click()");
+    await waitFor("document.querySelector('#cameraStage').classList.contains('has-image')", { message: 'image non figée' });
+    check(await evaluate('retissDebug.state.stream === null'), 'la caméra reste allumée après avoir figé l’image');
+    check(await evaluate("!document.querySelector('#analyzeButton').disabled"), 'image figée non analysable');
+  });
+
   await step('[D-12][D-29] Caméra (périphérique simulé) : capture, arrêt, proportions', async () => {
     await evaluate("document.querySelector('#cameraButton').click()");
     await waitFor("!document.querySelector('#captureButton').disabled", { message: 'caméra non démarrée' });

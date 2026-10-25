@@ -40,8 +40,8 @@ Le navigateur peut demander l’autorisation caméra. L’export PDF et les poli
 
 ## Utilisation
 
-1. Saisir la largeur et la longueur du coupon (en cm).
-2. Importer une photo ou utiliser la caméra.
+1. Saisir la largeur du coupon (en cm). Sans recadrage, la longueur est calculée d’après les proportions de la photo.
+2. Importer une photo, utiliser la caméra de l’ordinateur, ou **📱 Connecter une autre caméra** : un téléphone fixé sur un support au-dessus du tissu, vu comme une webcam. La fenêtre explique la connexion (Lien avec Windows, DroidCam, Iriun, Camo, Caméra de continuité). On voit l’image en direct et on clique **Figer l’image** depuis l’ordinateur.
 3. **Recadrer (4 coins)** : cliquer les 4 coins du tissu sur la photo, dans n'importe quel ordre. Le fond est retiré et la perspective corrigée.
 4. **Analyser l'image**, ajuster le facteur MAD, retoucher le masque au pinceau si besoin.
 5. Choisir l'orientation des pièces (droit-fil par défaut), puis **Imbriquer les patrons**.
@@ -55,7 +55,8 @@ Node.js 22 ou plus récent est nécessaire.
 
 ```powershell
 npm test           # tests unitaires (≈ 1 s)
-npm run test:e2e   # scénario complet dans Chrome/Edge headless (≈ 15 s)
+npm run test:e2e   # scénario complet dans Chrome/Edge headless (≈ 25 s)
+npm run bench      # banc d’essai du nesting (T-shirts, surface, temps)
 ```
 
 Le test de bout en bout trouve Chrome ou Edge tout seul ; sinon, définir `CHROME_PATH`. Il importe une photo, analyse, retouche au pinceau, lance l’imbrication, exporte le PDF et teste la caméra (simulée).

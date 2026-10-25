@@ -12,7 +12,7 @@ import { buildPieceShapes, nestPieces } from './src/core/nesting.js';
 import { orderCorners, quadRatio, rectifiedSize, warpPerspective } from './src/core/perspective.js';
 import { computeSurfaceStats } from './src/core/stats.js';
 import { buildCutPlanPdf } from './src/export/pdf.js';
-import { startCamera, stopCamera } from './src/ui/camera.js';
+import { listCameras, startCamera, stopCamera } from './src/ui/camera.js';
 import { clearCanvas, drawCropPoints, drawMaskOverlay, drawPlan } from './src/ui/render.js';
 
 const $ = (selector) => {
@@ -25,7 +25,9 @@ const ui = {
   status: $('#statusText'),
   video: $('#video'), captureCanvas: $('#captureCanvas'), sourcePreview: $('#sourcePreview'),
   cameraStage: $('#cameraStage'), cameraPlaceholder: $('#cameraPlaceholder'),
-  cameraButton: $('#cameraButton'), captureButton: $('#captureButton'), cropButton: $('#cropButton'), fileInput: $('#fileInput'),
+  cameraButton: $('#cameraButton'), captureButton: $('#captureButton'), externalCameraButton: $('#externalCameraButton'),
+  cameraDialog: $('#cameraDialog'), cameraSelect: $('#cameraSelect'), refreshCamerasButton: $('#refreshCamerasButton'),
+  useCameraButton: $('#useCameraButton'), cameraDialogStatus: $('#cameraDialogStatus'), cropButton: $('#cropButton'), fileInput: $('#fileInput'),
   fabricWidth: $('#fabricWidth'), fabricHeight: $('#fabricHeight'), fabricLengthHint: $('#fabricLengthHint'), fabricBadge: $('#fabricBadge'), fabricIntro: $('#fabricIntro'),
   analysisPill: $('#analysisPill'), analysisSummary: $('#analysisSummary p'),
   sensitivity: $('#sensitivity'), sensitivityValue: $('#sensitivityValue'), analyzeButton: $('#analyzeButton'),
@@ -65,6 +67,7 @@ const state = {
   plan: null,         // { placements, stats, gridMask }
   nesting: false,
   stream: null,
+  cameraDeviceId: readStoredCamera(), // D-32 : caméra choisie (téléphone, webcam…), mémorisée sur ce navigateur
   brushMode: 'add',
   orientationMode: DEFAULT_ORIENTATION_MODE,
   painting: false,
@@ -74,6 +77,10 @@ const state = {
 };
 
 // ---------- Utilitaires d'affichage ----------
+
+// Préférence de confort uniquement : l'appli fonctionne si le stockage est indisponible.
+function readStoredCamera() { try { return localStorage.getItem('retiss.cameraDeviceId') || null; } catch { return null; } }
+function storeCamera(deviceId) { try { localStorage.setItem('retiss.cameraDeviceId', deviceId); } catch { /* navigation privée */ } }
 
 function setStatus(text) { ui.status.textContent = text; }
 function setProgress(percent, text) { ui.progressBar.style.width = `${percent}%`; ui.progressText.textContent = text; }
@@ -426,21 +433,63 @@ async function exportPdf() {
 
 // ---------- Événements ----------
 
-ui.cameraButton.addEventListener('click', guard(async () => {
+/** Affiche le flux d'une caméra (deviceId absent : caméra par défaut). Renvoie false en cas d'échec. */
+async function connectCamera(deviceId, label = 'Caméra') {
   if (state.crop.picking) stopCropPicking();
   stopCamera(state.stream); state.stream = null;
   ui.captureButton.disabled = true;
-  setStatus('Connexion à la caméra…');
+  setStatus(`Connexion à « ${label} »…`);
   try {
-    state.stream = await startCamera(ui.video);
+    state.stream = await startCamera(ui.video, { deviceId });
   } catch (error) {
+    // Caméra mémorisée débranchée : on retombe sur la caméra par défaut.
+    if (deviceId && error.name === 'OverconstrainedError') return connectCamera(undefined);
     setStatus(`Caméra indisponible : ${error.message}`);
-    return;
+    return false;
   }
   ui.cameraStage.style.aspectRatio = `${ui.video.videoWidth / ui.video.videoHeight}`;
   ui.cameraStage.classList.remove('has-image'); ui.cameraPlaceholder.classList.add('hidden');
   ui.captureButton.disabled = false;
-  setStatus('Caméra connectée');
+  ui.cameraStage.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  setStatus(`« ${label} » connectée (${ui.video.videoWidth} × ${ui.video.videoHeight}) — clique « Figer l’image »`);
+  return true;
+}
+
+// ---------- Caméra externe (D-32) ----------
+
+async function refreshCameraList() {
+  ui.cameraDialogStatus.textContent = 'Recherche des caméras…';
+  let cameras;
+  try {
+    cameras = await listCameras();
+  } catch (error) {
+    ui.cameraDialogStatus.textContent = `Accès aux caméras impossible : ${error.message}`;
+    return;
+  }
+  ui.cameraSelect.replaceChildren(...cameras.map(({ deviceId, label }) => new Option(label, deviceId, false, deviceId === state.cameraDeviceId)));
+  ui.useCameraButton.disabled = cameras.length === 0;
+  ui.cameraDialogStatus.textContent = cameras.length
+    ? `${cameras.length} caméra${cameras.length > 1 ? 's' : ''} trouvée${cameras.length > 1 ? 's' : ''}. Ton téléphone n’y est pas ? Vérifie l’étape 1 puis actualise.`
+    : 'Aucune caméra trouvée : connecte le téléphone (étape 1) puis actualise.';
+}
+
+ui.externalCameraButton.addEventListener('click', guard(async () => {
+  ui.cameraDialog.showModal();
+  await refreshCameraList();
+}));
+ui.refreshCamerasButton.addEventListener('click', guard(refreshCameraList));
+ui.useCameraButton.addEventListener('click', guard(async () => {
+  const option = ui.cameraSelect.selectedOptions[0];
+  if (!option?.value) return;
+  ui.cameraDialog.close();
+  if (await connectCamera(option.value, option.textContent)) { state.cameraDeviceId = option.value; storeCamera(option.value); }
+}));
+// Un téléphone branché ou débranché pendant que la fenêtre est ouverte : on met la liste à jour.
+navigator.mediaDevices?.addEventListener?.('devicechange', guard(async () => { if (ui.cameraDialog.open) await refreshCameraList(); }));
+
+ui.cameraButton.addEventListener('click', guard(async () => {
+  const label = state.cameraDeviceId ? 'caméra choisie' : 'Caméra';
+  await connectCamera(state.cameraDeviceId ?? undefined, label);
 }));
 
 ui.captureButton.addEventListener('click', guard(() => {

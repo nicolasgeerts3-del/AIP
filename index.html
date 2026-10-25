@@ -12,12 +12,64 @@
   <main id="top">
     <section class="intro"><div><p class="kicker">Seconde main, seconde vie</p><h1>Découper mieux.<br><em>Gaspiller moins.</em></h1><p class="intro-copy">Un masque de défauts, des pièces indépendantes et un plan de coupe imbriqué sur <span id="fabricIntro">3,00 m × 4,50 m</span>.</p></div><div class="stepper"><span class="step active">01 <b>Capture</b></span><i></i><span class="step" id="stepAnalyze">02 <b>Masque</b></span><i></i><span class="step" id="stepPlan">03 <b>Nesting</b></span></div></section>
     <section class="workspace">
-      <div class="capture-panel panel"><div class="panel-head"><div><span class="eyebrow">01 / IMAGE SOURCE</span><h2>Cadre ton tissu</h2></div><span class="capture-badge" id="fabricBadge">3,00 m × 4,50 m</span></div><div class="camera-stage" id="cameraStage"><video id="video" autoplay playsinline muted></video><canvas id="captureCanvas"></canvas><canvas id="sourcePreview"></canvas><div class="camera-placeholder" id="cameraPlaceholder"><div class="lens-icon">◉</div><p>Active la caméra ou importe une photo</p><small>Image intégrale, sans déformation. Le masque reprend exactement son format.</small></div><div class="frame-corners"></div></div><div class="capture-actions"><button class="button primary" id="cameraButton">◉ Activer la caméra</button><button class="button secondary" id="captureButton" disabled>◌ Capturer</button><button class="button secondary" id="cropButton" disabled>⌗ Recadrer (4 coins)</button><label class="button ghost" for="fileInput">Importer une photo<input id="fileInput" type="file" accept="image/*" hidden></label></div><div class="fabric-size"><label for="fabricWidth">Largeur du tissu (cm)<input class="select-input" id="fabricWidth" type="number" min="20" max="1000" step="0.5" value="300"></label><label for="fabricHeight">Longueur du tissu (cm)<input class="select-input" id="fabricHeight" type="number" min="20" max="1000" step="0.5" value="450"></label></div><small class="fabric-hint" id="fabricLengthHint"></small></div>
+      <div class="capture-panel panel"><div class="panel-head"><div><span class="eyebrow">01 / IMAGE SOURCE</span><h2>Cadre ton tissu</h2></div><span class="capture-badge" id="fabricBadge">3,00 m × 4,50 m</span></div><div class="camera-stage" id="cameraStage"><video id="video" autoplay playsinline muted></video><canvas id="captureCanvas"></canvas><canvas id="sourcePreview"></canvas><div class="camera-placeholder" id="cameraPlaceholder"><div class="lens-icon">◉</div><p>Active la caméra ou importe une photo</p><small>Image intégrale, sans déformation. Le masque reprend exactement son format.</small></div><div class="frame-corners"></div></div><div class="capture-actions"><button class="button primary" id="cameraButton">◉ Activer la caméra</button><button class="button secondary" id="captureButton" disabled>◌ Figer l’image</button><button class="button secondary" id="cropButton" disabled>⌗ Recadrer (4 coins)</button><label class="button ghost" for="fileInput">Importer une photo<input id="fileInput" type="file" accept="image/*" hidden></label><button class="button ghost" id="externalCameraButton" type="button">📱 Connecter une autre caméra</button></div><div class="fabric-size"><label for="fabricWidth">Largeur du tissu (cm)<input class="select-input" id="fabricWidth" type="number" min="20" max="1000" step="0.5" value="300"></label><label for="fabricHeight">Longueur du tissu (cm)<input class="select-input" id="fabricHeight" type="number" min="20" max="1000" step="0.5" value="450"></label></div><small class="fabric-hint" id="fabricLengthHint"></small></div>
       <aside class="control-panel panel"><div class="panel-head"><div><span class="eyebrow">02 / MASQUE</span><h2>Détecter les défauts</h2></div><span class="live-pill" id="analysisPill">EN ATTENTE</span></div><div class="analysis-summary" id="analysisSummary"><div class="summary-icon">✦</div><p>Le masque compare la teinte au tissu sain, indépendamment de l’éclairage, et repère les taches plus claires ou plus sombres que leur entourage. Les ombres douces sont ignorées.</p></div><div class="threshold-control"><label for="sensitivity">Facteur MAD <output id="sensitivityValue">3.5</output></label><input id="sensitivity" type="range" min="1.5" max="8" step="0.1" value="3.5"><small>Le masque se recalcule immédiatement.</small></div><button class="button analyze-button" id="analyzeButton" disabled>Analyser l’image <span>→</span></button></aside>
     </section>
     <section class="editor panel"><div class="panel-head"><div><span class="eyebrow">CORRECTION MANUELLE</span><h2>Peaufiner le masque</h2></div><span class="mask-count" id="maskCount">0 cm²</span></div><div class="editor-layout"><div class="mask-stage"><canvas id="maskCanvas"></canvas><div class="editor-empty" id="editorEmpty">L’analyse apparaîtra ici</div></div><div class="editor-tools"><p class="tool-help">Peins directement sur le masque si une zone a été oubliée.</p><div class="tool-row"><button class="tool-button active" id="addTool">＋ Ajouter un défaut</button><button class="tool-button" id="eraseTool">− Effacer un défaut</button></div><label class="brush-label" for="brushSize">Taille du pinceau <output id="brushValue">5 cm</output></label><input id="brushSize" type="range" min="1" max="20" value="5"><button class="button secondary" id="resetMaskButton">Réinitialiser le masque</button><label class="brush-label" for="orientationMode">Orientation des pièces</label><select class="select-input" id="orientationMode"></select><button class="button primary plan-button" id="planButton" disabled>Imbriquer les patrons <span>✦</span></button><div class="progress-wrap"><div class="progress-bar"><span id="progressBar"></span></div><small id="progressText">Nesting en attente</small></div></div></div></section>
     <section class="result panel"><div class="panel-head"><div><span class="eyebrow">03 / RÉSULTAT</span><h2>Plan de découpe imbriqué</h2></div><span class="optimization-state" id="optimizationState">EN ATTENTE</span><button class="button secondary" id="downloadButton" disabled>↓ Télécharger le PDF 1:1</button></div><div class="result-frame"><canvas id="resultCanvas"></canvas><div class="result-empty" id="resultEmpty"><span>✣</span><p>Le nesting apparaîtra ici</p><small>Chaque pièce sera placée indépendamment.</small></div></div><div class="result-stats" id="resultStats"><div><span>T-SHIRTS COMPLETS</span><strong>—</strong></div><div><span>PIÈCES PLACÉES</span><strong>—</strong></div><div><span>SURFACE TOTALE</span><strong>—</strong></div><div><span>SURFACE DÉFECTUEUSE</span><strong>—</strong></div><div><span>SURFACE UTILISÉE</span><strong>—</strong></div><div><span>PERDUE / SAINE</span><strong>—</strong></div></div></section>
   </main>
+
+  <dialog class="camera-dialog" id="cameraDialog" aria-labelledby="cameraDialogTitle">
+    <form method="dialog" class="camera-dialog-close"><button class="tool-button" aria-label="Fermer">✕</button></form>
+    <span class="eyebrow">CAMÉRA EXTERNE</span>
+    <h2 id="cameraDialogTitle">Utiliser un téléphone ou une autre caméra</h2>
+    <p class="tool-help">Fixe le téléphone sur un support au-dessus du tissu, puis pilote la prise de vue depuis l’ordinateur : tu vois l’image en direct ici et tu cliques « Figer l’image » au bon moment.</p>
+
+    <section class="camera-dialog-step">
+      <h3>1. Connecter le téléphone à l’ordinateur</h3>
+      <details open>
+        <summary>Android + Windows 11 (sans application à installer sur le PC)</summary>
+        <ol>
+          <li>Sur le téléphone, installe ou mets à jour l’application <b>Lien avec Windows</b> (Android 9 ou plus récent).</li>
+          <li>Sur le PC : <b>Paramètres → Bluetooth et appareils → Appareils mobiles → Gérer les appareils</b>, ajoute ton téléphone puis active <b>« Utiliser comme caméra connectée »</b>.</li>
+          <li>Accepte la notification sur le téléphone. La caméra apparaît dans la liste ci-dessous sous le nom <b>Windows Virtual Camera</b>.</li>
+        </ol>
+      </details>
+      <details>
+        <summary>Android ou iPhone avec une application webcam (DroidCam, Iriun, Camo…)</summary>
+        <ol>
+          <li>Installe l’application sur le téléphone <b>et</b> son logiciel compagnon sur le PC (même éditeur, site officiel).</li>
+          <li>Mets le téléphone et le PC sur le <b>même Wi-Fi</b>, ou relie-les en USB pour une image plus stable.</li>
+          <li>Lance l’application sur les deux appareils : le téléphone devient une webcam (« DroidCam Source », « Iriun Webcam », « Camo »…).</li>
+        </ol>
+      </details>
+      <details>
+        <summary>iPhone + Mac</summary>
+        <ol>
+          <li>Avec macOS 13 ou plus récent et le même identifiant Apple, l’iPhone posé à proximité apparaît automatiquement comme caméra (<b>Caméra de continuité</b>).</li>
+        </ol>
+      </details>
+    </section>
+
+    <section class="camera-dialog-step">
+      <h3>2. Choisir la caméra</h3>
+      <div class="camera-dialog-row">
+        <select class="select-input" id="cameraSelect" aria-label="Caméra à utiliser"><option value="">Clique « Actualiser » pour lister les caméras</option></select>
+        <button class="button secondary" id="refreshCamerasButton" type="button">↻ Actualiser</button>
+      </div>
+      <small class="fabric-hint" id="cameraDialogStatus">Si ton téléphone n’apparaît pas : vérifie l’étape 1, ferme les autres applications qui utilisent la caméra (Teams, Zoom…), puis actualise.</small>
+      <button class="button primary" id="useCameraButton" type="button" disabled>Utiliser cette caméra</button>
+    </section>
+
+    <section class="camera-dialog-step">
+      <h3>3. Réussir la photo</h3>
+      <ul>
+        <li>Téléphone <b>fixe</b> (trépied, support), objectif <b>parallèle au tissu</b>, au-dessus de son centre.</li>
+        <li>Tout le tissu dans le cadre, avec un peu de marge ; lumière <b>diffuse</b>, sans reflet ni ombre portée nette.</li>
+        <li>Clique <b>« Figer l’image »</b> sur l’ordinateur, puis <b>« Recadrer (4 coins) »</b> pour retirer le fond et corriger la perspective.</li>
+      </ul>
+    </section>
+  </dialog>
   <footer><span>ReTiss / prototype nesting</span><span>Vérifier le tissu avant découpe</span></footer>
   <script>
     // Les modules JavaScript ne se chargent pas en ouvrant le fichier directement (file://).

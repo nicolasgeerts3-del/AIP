@@ -11,3 +11,13 @@
 .select-input[aria-invalid=true]{border-color:#d94242}
 .fabric-hint{display:block;margin-top:6px;font-size:11px;color:var(--muted)}
 .select-input:disabled{opacity:.6}
+/* D-32 : fenêtre de connexion d'une caméra externe. */
+.camera-dialog{max-width:640px;width:calc(100% - 32px);border:1px solid var(--line);border-radius:4px;background:var(--paper);color:var(--ink);padding:24px;max-height:calc(100vh - 48px);overflow:auto}
+.camera-dialog::backdrop{background:#202623a6}
+.camera-dialog h2{margin:6px 0 10px}
+.camera-dialog h3{font-size:15px;margin:0 0 8px}
+.camera-dialog-close{position:absolute;top:14px;right:14px;margin:0}
+.camera-dialog-step{border-top:1px solid var(--line);padding-top:14px;margin-top:14px;display:flex;flex-direction:column;gap:10px}
+.camera-dialog-step ol,.camera-dialog-step ul{margin:6px 0 0;padding-left:20px;font-size:13px;line-height:1.6}
+.camera-dialog-step summary{cursor:pointer;font-size:13px;font-weight:600}
+.camera-dialog-row{display:grid;grid-template-columns:1fr auto;gap:10px}

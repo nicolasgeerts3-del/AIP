@@ -41,6 +41,7 @@ Gravité : 🔴 critique (découpe fausse ou appli bloquée) · 🟠 majeur · �
 | D-29 | 🔴 | Le plan était toujours imbriqué sur un tissu 3 × 4,5 m (portrait) : une photo en paysage était étirée, le plan n'avait pas le format de la photo. | Sans recadrage, la longueur du tissu est calculée d'après les proportions de la photo (`fabricWithRatio`) ; au recadrage, elle est estimée d'après les coins (`quadRatio`) puis modifiable. | fabric, e2e |
 | D-30 | 🔴 | Imbrication peu efficace : positions candidates limitées aux bords des obstacles, grands vides, pièces orphelines. | Nouvel algorithme : recherche exhaustive du premier emplacement libre (sauts par séries de cases, `Occupancy`), recherche du nombre maximal de T-shirts complets, remplissage depuis les 4 coins, phase aléatoire de 2,5 s. Droit-fil 3 × 4,5 m : 10 → 11–12 T-shirts ; photo de test : 2 → 3. `npm run bench` pour comparer. | nesting |
 | D-31 | 🔴 | Un fond détecté tout autour d'une photo non recadrée faisait remplir tout le tissu comme une tache (`fillHoles`). | Un trou n'est rempli que s'il ne ressemble pas au tissu sain. | detection |
+| D-32 | 🟠 | Impossible de choisir une autre caméra (téléphone fixé sur un support) : seule la caméra par défaut était utilisable. | Bouton « Connecter une autre caméra » : liste des caméras (`listCameras`), choix mémorisé, procédure de connexion d'un téléphone ; « Capturer » devient « Figer l'image ». | e2e |
 
 ## Ouverts
 
