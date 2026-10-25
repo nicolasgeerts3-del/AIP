@@ -2,7 +2,7 @@
 // modules de src/. Aucun calcul métier ici : détection, nesting, statistiques
 // et PDF vivent dans src/core et src/export, testés sans navigateur.
 import {
-  CELL_CM, CELL_MM, COLORS, DEFAULT_ORIENTATION_MODE, FABRIC, FABRIC_LIMITS, KIT, MAX_IMAGE_WIDTH, MAX_SOURCE_WIDTH, ORIENTATION_MODES, PIECES,
+  APP_VERSION, CELL_CM, CELL_MM, COLORS, DEFAULT_ORIENTATION_MODE, FABRIC, FABRIC_LIMITS, KIT, MAX_IMAGE_WIDTH, MAX_SOURCE_WIDTH, ORIENTATION_MODES, PIECES,
   SAFE_CLEARANCE_CELLS
 } from './src/config.js';
 import { computeColorPlanes, detectDefects } from './src/core/detection.js';
@@ -87,9 +87,17 @@ function setProgress(percent, text) { ui.progressBar.style.width = `${percent}%`
 function formatArea(cm2) { return `${cm2 >= 1 || cm2 === 0 ? cm2.toFixed(0) : '<1'} cm²`; }
 
 /** Enveloppe un gestionnaire d'événement : toute erreur s'affiche dans la barre de statut. */
+/** Erreur bien visible en haut de la page, en plus de la barre de statut (D-33). */
+function showError(message) {
+  const banner = document.getElementById('appBanner');
+  banner.textContent = message; banner.hidden = false;
+  clearTimeout(showError.timer);
+  showError.timer = setTimeout(() => { banner.hidden = true; }, 12000);
+}
+
 function guard(handler) {
   return async (event) => {
-    try { await handler(event); } catch (error) { console.error(error); setStatus(`Erreur : ${error.message}`); }
+    try { await handler(event); } catch (error) { console.error(error); setStatus(`Erreur : ${error.message}`); showError(`Erreur : ${error.message}`); }
   };
 }
 
@@ -570,4 +578,7 @@ ui.downloadButton.addEventListener('click', guard(exportPdf));
 setFabric(state.fabric); renderMask(); renderStats();
 
 // Accès en lecture pour les tests de bout en bout (tests/e2e.js).
+// D-33 : signale au contrôle de démarrage de index.html que le code est chargé, et en quelle version.
+document.documentElement.dataset.appLoaded = APP_VERSION;
+
 window.retissDebug = Object.freeze({ get state() { return state; }, getMasks, getShapes });

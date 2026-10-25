@@ -2,6 +2,9 @@
 // constantes ici : changer la taille du tissu ou la résolution ne doit se faire
 // qu'à un seul endroit.
 
+/** Version du code, comparée à celle de index.html au démarrage (D-33). À changer à chaque livraison. */
+export const APP_VERSION = '2026-10-25.4';
+
 /** Dimensions du coupon proposées par défaut ; modifiables dans l'interface (D-20). */
 export const FABRIC = Object.freeze({ widthCm: 300, heightCm: 450 });
 

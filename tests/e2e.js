@@ -130,6 +130,8 @@ async function scenario(baseUrl) {
     const disabled = await evaluate("['#analyzeButton', '#planButton', '#downloadButton', '#captureButton'].every((s) => document.querySelector(s).disabled)");
     check(disabled, 'des boutons sont actifs alors qu’aucune image n’est chargée');
     check(await evaluate(`${text('#maskCount')} === '0 cm²'`), 'compteur de défauts non nul au départ');
+    await delay(1800);
+    check(await evaluate("document.querySelector('#appBanner').hidden"), `[D-33] bandeau affiché au démarrage normal : ${await evaluate("document.querySelector('#appBanner').textContent")}`);
   });
 
   await step('Import d’une photo (2:3) avec trois taches et une ombre', async () => {
@@ -353,6 +355,27 @@ async function scenario(baseUrl) {
 
   await step('Aucune erreur JavaScript pendant le scénario', async () => {
     check(errors.length === 0, errors.join('\n'));
+  });
+
+  await step('[D-33] Ancienne version en cache : bandeau explicite', async () => {
+    await cdp.send('Page.navigate', { url: baseUrl });
+    await waitFor('!!window.retissDebug');
+    // Simule un app.js d'une version antérieure à celle de index.html.
+    await evaluate("document.documentElement.dataset.appLoaded = '2000-01-01'");
+    await waitFor("!document.querySelector('#appBanner').hidden", { timeout: 5000, message: 'aucun bandeau' });
+    check(await evaluate(`${text('#appBanner')}.includes('ancienne version') && ${text('#appBanner')}.includes('Ctrl + F5')`), 'message de cache peu clair');
+  });
+
+  await step('[D-33] Code qui ne démarre pas : bandeau explicite', async () => {
+    await cdp.send('Network.enable');
+    await cdp.send('Network.setBlockedURLs', { urls: ['*app.js*'] });
+    await cdp.send('Page.navigate', { url: baseUrl });
+    try {
+      await waitFor("!document.querySelector('#appBanner').hidden", { timeout: 6000, message: 'aucun bandeau' });
+      check(await evaluate(`${text('#appBanner')}.includes('n’a pas démarré')`), 'message de démarrage peu clair');
+    } finally {
+      await cdp.send('Network.setBlockedURLs', { urls: [] });
+    }
   });
 }
 

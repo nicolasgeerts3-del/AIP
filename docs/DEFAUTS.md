@@ -42,6 +42,7 @@ Gravité : 🔴 critique (découpe fausse ou appli bloquée) · 🟠 majeur · �
 | D-30 | 🔴 | Imbrication peu efficace : positions candidates limitées aux bords des obstacles, grands vides, pièces orphelines. | Nouvel algorithme : recherche exhaustive du premier emplacement libre (sauts par séries de cases, `Occupancy`), recherche du nombre maximal de T-shirts complets, remplissage depuis les 4 coins, phase aléatoire de 2,5 s. Droit-fil 3 × 4,5 m : 10 → 11–12 T-shirts ; photo de test : 2 → 3. `npm run bench` pour comparer. | nesting |
 | D-31 | 🔴 | Un fond détecté tout autour d'une photo non recadrée faisait remplir tout le tissu comme une tache (`fillHoles`). | Un trou n'est rempli que s'il ne ressemble pas au tissu sain. | detection |
 | D-32 | 🟠 | Impossible de choisir une autre caméra (téléphone fixé sur un support) : seule la caméra par défaut était utilisable. | Bouton « Connecter une autre caméra » : liste des caméras (`listCameras`), choix mémorisé, procédure de connexion d'un téléphone ; « Capturer » devient « Figer l'image ». | e2e |
+| D-33 | 🟠 | Si le navigateur gardait en cache une ancienne version du code (ou si le code ne démarrait pas), les nouveaux boutons ne réagissaient pas, sans aucun message. | Numéro de version partagé par index.html et le code (`APP_VERSION`) ; bandeau rouge si le code n’a pas démarré ou n’est pas à jour (« Ctrl + F5 ») ; erreurs aussi affichées dans ce bandeau. | e2e |
 
 ## Ouverts
 

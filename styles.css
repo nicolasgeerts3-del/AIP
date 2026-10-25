@@ -21,3 +21,9 @@
 .camera-dialog-step ol,.camera-dialog-step ul{margin:6px 0 0;padding-left:20px;font-size:13px;line-height:1.6}
 .camera-dialog-step summary{cursor:pointer;font-size:13px;font-weight:600}
 .camera-dialog-row{display:grid;grid-template-columns:1fr auto;gap:10px}
+/* D-33 : bandeau d’erreur ou de version en cache. */
+.app-banner{position:sticky;top:0;z-index:20;background:#d94242;color:#fff;padding:12px 20px;font-size:14px;line-height:1.5;text-align:center}
+.app-banner[hidden]{display:none}
+/* D-33 : bandeau d’erreur ou de version en cache. */
+.app-banner{position:sticky;top:0;z-index:20;background:#d94242;color:#fff;padding:12px 20px;font-size:14px;line-height:1.5;text-align:center}
+.app-banner[hidden]{display:none}

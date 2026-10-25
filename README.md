@@ -36,6 +36,8 @@ py -m http.server 8000  # ou avec Python
 
 Ou, dans VS Code, ouvrir `index.html` avec l’extension **Live Server**.
 
+Après une mise à jour du code, si un bouton ne réagit pas ou si un bandeau rouge parle d’« ancienne version », recharger la page sans cache avec **Ctrl + F5**. `npm start` désactive le cache et évite ce problème.
+
 Le navigateur peut demander l’autorisation caméra. L’export PDF et les polices utilisent des ressources CDN, donc une connexion Internet est nécessaire pour ces éléments.
 
 ## Utilisation

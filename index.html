@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="fr">
+<html lang="fr" data-app-version="2026-10-25.4">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -8,6 +8,7 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js" defer></script>
 </head>
 <body>
+  <div class="app-banner" id="appBanner" role="alert" hidden></div>
   <header class="topbar"><a class="brand" href="#top"><span class="brand-mark">R</span>ReTiss</a><span class="project-label">ATELIER / NESTING TEXTILE</span><div class="status"><span class="status-dot"></span><span id="statusText">Prêt à inspecter</span></div></header>
   <main id="top">
     <section class="intro"><div><p class="kicker">Seconde main, seconde vie</p><h1>Découper mieux.<br><em>Gaspiller moins.</em></h1><p class="intro-copy">Un masque de défauts, des pièces indépendantes et un plan de coupe imbriqué sur <span id="fabricIntro">3,00 m × 4,50 m</span>.</p></div><div class="stepper"><span class="step active">01 <b>Capture</b></span><i></i><span class="step" id="stepAnalyze">02 <b>Masque</b></span><i></i><span class="step" id="stepPlan">03 <b>Nesting</b></span></div></section>
@@ -72,8 +73,26 @@
   </dialog>
   <footer><span>ReTiss / prototype nesting</span><span>Vérifier le tissu avant découpe</span></footer>
   <script>
-    // Les modules JavaScript ne se chargent pas en ouvrant le fichier directement (file://).
-    if (location.protocol === 'file:') document.getElementById('statusText').textContent = 'Ouvrir via un serveur local (voir README)';
+    // D-33 : contrôle de démarrage. Si app.js ne démarre pas, ou si le navigateur a
+    // gardé en cache une ancienne version, les boutons ne réagissent pas : on le dit.
+    (() => {
+      const banner = document.getElementById('appBanner');
+      const show = (text) => { banner.textContent = text; banner.hidden = false; };
+      let lastError = '';
+      window.addEventListener('error', (event) => { lastError = event.message || lastError; });
+      if (location.protocol === 'file:') {
+        show('L’application doit être ouverte via un serveur local (npm start, puis http://localhost:8000) : ouverte comme fichier, ses boutons ne fonctionnent pas.');
+        return;
+      }
+      window.addEventListener('load', () => setTimeout(() => {
+        const expected = document.documentElement.dataset.appVersion;
+        const loaded = document.documentElement.dataset.appLoaded;
+        if (loaded === expected) return;
+        show(loaded
+          ? `Le navigateur utilise une ancienne version du code (${loaded} au lieu de ${expected}) : les nouveaux boutons ne fonctionnent pas. Appuie sur Ctrl + F5 pour recharger sans cache.`
+          : `L’application n’a pas démarré${lastError ? ` (${lastError})` : ''}. Appuie sur Ctrl + F5 pour recharger sans cache ; si le problème persiste, lance npm start.`);
+      }, 1500));
+    })();
   </script>
   <script type="module" src="app.js"></script>
 </body>
