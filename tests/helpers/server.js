@@ -26,7 +26,13 @@ export function startServer(root, port = 8000) {
   const base = resolve(root);
   const rules = loadVercelHeaders(base);
   const server = createServer((request, response) => {
-    const path = decodeURIComponent(new URL(request.url, 'http://localhost').pathname);
+    let path;
+    try {
+      path = decodeURIComponent(new URL(request.url, 'http://localhost').pathname);
+    } catch {
+      // D-39 : une adresse mal formée (ex. « %E0 ») ne doit pas faire planter le serveur.
+      response.writeHead(400).end('Adresse invalide'); return;
+    }
     const file = normalize(join(base, path === '/' ? 'index.html' : path));
     if (file !== base && !file.startsWith(base + sep)) { response.writeHead(403).end(); return; }
     try {

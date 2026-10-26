@@ -132,8 +132,21 @@ async function scenario(baseUrl, browser) {
     const disabled = await evaluate("['#analyzeButton', '#planButton', '#downloadButton', '#captureButton'].every((s) => document.querySelector(s).disabled)");
     check(disabled, 'des boutons sont actifs alors qu’aucune image n’est chargée');
     check(await evaluate(`${text('#maskCount')} === '0 cm²'`), 'compteur de défauts non nul au départ');
+    check(await evaluate("[...document.querySelectorAll('#resultStats strong')].slice(0, 4).every((s) => s.textContent === '—')"), '[D-41] statistiques chiffrées alors qu’il n’y a pas de plan');
     await delay(1800);
     check(await evaluate("document.querySelector('#appBanner').hidden"), `[D-33] bandeau affiché au démarrage normal : ${await evaluate("document.querySelector('#appBanner').textContent")}`);
+  });
+
+  await step('[D-40] « Importer une photo » s’ouvre au clavier', async () => {
+    await cdp.send('Page.setInterceptFileChooserDialog', { enabled: true });
+    let opened = false;
+    cdp.on((message) => { if (message.method === 'Page.fileChooserOpened') opened = true; });
+    await evaluate("document.querySelector('label[for=\"fileInput\"]').focus()");
+    await cdp.send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13 });
+    await cdp.send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13 });
+    await delay(300);
+    await cdp.send('Page.setInterceptFileChooserDialog', { enabled: false });
+    check(opened, 'Entrée sur « Importer une photo » n’ouvre pas le choix de fichier');
   });
 
   await step('Import d’une photo (2:3) avec trois taches et une ombre', async () => {
@@ -282,6 +295,26 @@ async function scenario(baseUrl, browser) {
       await projection.send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'm', text: 'm' });
       await projection.send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'm' });
       check(await evaluate('window.projectionDebug.state.showPattern', projection) === !before, 'raccourci M sans effet');
+      const pixelsLit = () => evaluate("(() => { const c = document.querySelector('#projectionCanvas'); const d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data; let n = 0; for (let i = 0; i < d.length; i += 16) if (d[i] + d[i + 1] + d[i + 2] > 60) n += 1; return n; })()", projection);
+      // D-37 : en calibrage, M doit quand même changer l'image (quadrillage masqué / affiché).
+      const litNow = await pixelsLit();
+      await projection.send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'm', text: 'm' });
+      await projection.send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'm' });
+      await delay(150);
+      check(await pixelsLit() !== litNow, '[D-37] M sans effet visible pendant le calibrage');
+
+      // D-38 : le calibrage dépend de la taille de la fenêtre ; il revient quand on retrouve la même taille.
+      const size = await evaluate('({ width: innerWidth, height: innerHeight })', projection);
+      await projection.send('Emulation.setDeviceMetricsOverride', { width: size.width - 200, height: size.height - 100, deviceScaleFactor: 1, mobile: false });
+      await waitFor(`innerWidth === ${size.width - 200}`, { connection: projection });
+      await delay(150);
+      const other = await evaluate('window.projectionDebug.state.corners[0]', projection);
+      check(Math.abs(other[0] - moved[0]) > 1 || Math.abs(other[1] - moved[1]) > 1, '[D-38] calibrage d’une autre taille de fenêtre réutilisé tel quel');
+      await projection.send('Emulation.clearDeviceMetricsOverride');
+      await waitFor(`innerWidth === ${size.width}`, { connection: projection });
+      await delay(150);
+      const back = await evaluate('window.projectionDebug.state.corners[0]', projection);
+      check(Math.abs(back[0] - moved[0]) < 1 && Math.abs(back[1] - moved[1]) < 1, '[D-38] calibrage non retrouvé en revenant à la même taille');
 
       // Plan invalidé dans la fenêtre principale → plus aucun contour projeté.
       await evaluate("(() => { const s = document.querySelector('#orientationMode'); s.value = 'quarts'; s.dispatchEvent(new Event('change')); s.value = 'droit-fil'; s.dispatchEvent(new Event('change')); })()");

@@ -4,12 +4,13 @@
 //  1. On cherche le plus grand nombre K de T-shirts complets qui rentrent
 //     (recherche dichotomique sur K) ; on ne pose que les pièces de ces K
 //     T-shirts, donc pas de manches ou de bandes orphelines (D-22).
-//  2. Chaque pièce va au premier emplacement libre « le plus bas puis le plus
-//     à gauche », cherché sur TOUTE la grille, cellule par cellule. La
-//     recherche saute d'un coup les zones occupées et les trous trop courts
-//     grâce aux longueurs de cases consécutives de chaque ligne (Occupancy.run).
-//  3. Plusieurs ordres de pose sont essayés ; on garde le plan avec le plus
-//     de T-shirts, puis le plus compact (la plus grande chute réutilisable).
+//  2. Chaque pièce va au premier emplacement libre (findFirstFit), cherché
+//     sur TOUTE la grille, cellule par cellule. La recherche saute d'un coup
+//     les zones occupées et les trous trop courts grâce aux longueurs de
+//     cases consécutives de chaque ligne (Occupancy.run).
+//  3. On essaie plusieurs ordres de pose et les 4 coins de départ (tissu
+//     retourné), puis des ordres aléatoires pendant un budget de temps ; on
+//     garde le plan avec le plus de T-shirts, puis le plus compact.
 //
 // Un placement est { name, pass, x, y, shape } : la pièce `name` du T-shirt
 // numéro `pass`, avec la forme rastérisée `shape` (une orientation) posée à
@@ -168,15 +169,30 @@ export function scorePlan(placements, kit = KIT) {
     completeKits: countCompleteKits(placements, kit),
     pieceCount: placements.length,
     usedAreaCm2: placements.reduce((sum, placement) => sum + placement.shape.areaCm2, 0),
-    // Bas de la pièce la plus basse : plus il est haut, plus la chute restante est grande.
-    extentCells: placements.reduce((max, placement) => Math.max(max, shapeBox(placement.shape, placement.x, placement.y).y1), 0)
+    footprintCells: footprintCells(placements)
   };
+}
+
+/**
+ * Surface (en cellules) du rectangle qui englobe toutes les pièces : plus elle
+ * est petite, plus la chute restante est grande et d'un seul tenant. Mesure
+ * indépendante du coin de départ (D-36 : l'ancienne mesure, « bas de la pièce
+ * la plus basse », pénalisait à tort les plans remplis depuis le bas).
+ */
+export function footprintCells(placements) {
+  if (!placements.length) return 0;
+  let x0 = Infinity; let y0 = Infinity; let x1 = -Infinity; let y1 = -Infinity;
+  for (const placement of placements) {
+    const box = shapeBox(placement.shape, placement.x, placement.y);
+    x0 = Math.min(x0, box.x0); y0 = Math.min(y0, box.y0); x1 = Math.max(x1, box.x1); y1 = Math.max(y1, box.y1);
+  }
+  return (x1 - x0) * (y1 - y0);
 }
 
 /** Priorité : T-shirts complets, puis plan le plus compact, puis surface utilisée (D-05). */
 export function isBetterScore(candidate, reference) {
   if (candidate.completeKits !== reference.completeKits) return candidate.completeKits > reference.completeKits;
-  if (candidate.extentCells !== reference.extentCells) return candidate.extentCells < reference.extentCells;
+  if (candidate.footprintCells !== reference.footprintCells) return candidate.footprintCells < reference.footprintCells;
   return candidate.usedAreaCm2 > reference.usedAreaCm2 + 1e-9;
 }
 

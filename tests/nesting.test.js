@@ -358,3 +358,15 @@ describe('[D-30] remplissage depuis les 4 coins', () => {
     assert.ok(result.score.completeKits >= 3, `seulement ${result.score.completeKits} T-shirts`);
   });
 });
+
+describe('[D-36] compacité indépendante de la position du plan', () => {
+  it('[D-36] le même plan décalé vers le bas du tissu est aussi compact', async () => {
+    const gridMask = createMask(300, 300);
+    const top = await packSequence({ sequence: pieceSequence(1, 'par-taille', KIT, shapes), gridMask, shapes, clearance: 2 });
+    const lowest = Math.max(...top.placements.map((p) => shapeBox(p.shape, p.x, p.y).y1));
+    const shifted = top.placements.map((p) => ({ ...p, y: p.y + (300 - lowest) }));
+    assert.ok(validatePlan(shifted, gridMask).ok);
+    assert.equal(scorePlan(shifted).footprintCells, scorePlan(top.placements).footprintCells);
+    assert.ok(!isBetterScore(scorePlan(top.placements), scorePlan(shifted)), 'le plan collé en haut est jugé meilleur à tort');
+  });
+});

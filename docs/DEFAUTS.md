@@ -45,6 +45,12 @@ Gravité : 🔴 critique (découpe fausse ou appli bloquée) · 🟠 majeur · �
 | D-33 | 🟠 | Si le navigateur gardait en cache une ancienne version du code (ou si le code ne démarrait pas), les nouveaux boutons ne réagissaient pas, sans aucun message. | Numéro de version partagé par index.html et le code (`APP_VERSION`) ; bandeau rouge si le code n’a pas démarré ou n’est pas à jour (« Ctrl + F5 ») ; erreurs aussi affichées dans ce bandeau. | e2e |
 | D-24 | 🟠 | Seul un PDF de 273 pages A4 permettait de reporter le plan sur le tissu ; pas de mode projection. | Bouton « ▶ Projeter sur le tissu » : fenêtre plein écran sur le projecteur (`projection.html`), calibrage par 4 coins (homographie, `src/core/projection.js`), mire 10 cm / 50 cm, plan périmé effacé automatiquement. Guide matériel et câbles : `docs/PROJECTION.md`. Le PDF reste disponible. | projection, e2e |
 | D-35 | 🟡 | Revue ergonomie : grands blocs vides avant toute image, bouton Analyser peu visible, boutons mal regroupés, en-tête du résultat écrasé sur téléphone, chiffres sans séparateurs, jargon « nesting », analyse à lancer à la main. | Analyse automatique après chaque photo ; sources et actions de capture sur deux rangées ; cadres vides compacts ; statistiques en m² au format français avec explication ; en-têtes, barre du haut et pied de page adaptés au téléphone ; focus clavier visible ; « Imbrication » partout. | e2e |
+| D-36 | 🟡 | Départage des plans biaisé : la compacité était mesurée par le bas de la pièce la plus basse, si bien qu'un plan rempli depuis le bas était toujours jugé moins compact. | `footprintCells` : surface du rectangle englobant toutes les pièces, indépendante de leur position. | nesting |
+| D-37 | 🟡 | Projection : la touche M (mire) était sans effet pendant le calibrage. | Le bord du tissu reste affiché pendant le calibrage ; M masque le quadrillage et le carré témoin. | e2e |
+| D-38 | 🟠 | Projection : le calibrage, enregistré en pixels de fenêtre mais par taille d'écran, se décalait en passant en plein écran. | Calibrage mémorisé par taille de fenêtre ; rechargé à chaque redimensionnement. | e2e |
+| D-39 | 🟡 | Serveur local : une adresse mal formée (« %E0 ») le faisait planter. | Réponse 400. | server |
+| D-40 | 🟡 | « Importer une photo » (un label) ne s'activait pas au clavier. | Entrée / Espace ouvrent le choix de fichier. | e2e |
+| D-41 | 🟡 | Sans plan, les statistiques annonçaient 0 % d'utilisation et une chute égale à tout le tissu. | Valeurs « — » tant qu'aucun plan n'est calculé. | e2e |
 
 ## Ouverts
 

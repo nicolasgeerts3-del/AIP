@@ -30,8 +30,11 @@ const state = {
 
 // ---------- Calibrage mémorisé (projecteur fixe → même calibrage d'une séance à l'autre) ----------
 
+// D-38 : les coins sont en pixels de la fenêtre ; un calibrage fait en plein
+// écran n'est valable qu'en plein écran. La clé inclut donc la taille de la
+// fenêtre (et celle du tissu), pas seulement celle de l'écran.
 function storageKey() {
-  return `retiss.projection.${window.screen.width}x${window.screen.height}.${state.fabric.widthCm}x${state.fabric.heightCm}`;
+  return `retiss.projection.${window.innerWidth}x${window.innerHeight}.${state.fabric.widthCm}x${state.fabric.heightCm}`;
 }
 function loadCorners() {
   try {
@@ -74,13 +77,17 @@ function draw() {
   const map = (points) => projectPoints(matrix, points);
   const color = LINE_COLORS[state.colorIndex][1];
 
+  const { grid, border, square } = calibrationPattern(fabric, 50);
+  // D-37 : le bord du tissu reste visible pendant le calibrage (il sert à caler
+  // les coins) ; M ne masque que le quadrillage et le carré témoin.
   if (state.showPattern || state.calibrating) {
-    const { grid, border, square } = calibrationPattern(fabric, 50);
-    context.lineWidth = 1; context.strokeStyle = '#4a4a4a';
-    for (const segment of grid) strokePolyline(map(segment), false);
     context.lineWidth = 2; context.strokeStyle = '#9a9a9a';
     for (const segment of border) strokePolyline(map(segment), false);
-    context.strokeStyle = color;
+  }
+  if (state.showPattern) {
+    context.lineWidth = 1; context.strokeStyle = '#4a4a4a';
+    for (const segment of grid) strokePolyline(map(segment), false);
+    context.lineWidth = 2; context.strokeStyle = color;
     for (const segment of square) strokePolyline(map(segment), false);
     const [labelX, labelY] = map([[12, 6]])[0];
     context.fillStyle = color; context.font = '14px Manrope, system-ui, sans-serif'; context.textBaseline = 'middle';
@@ -203,7 +210,9 @@ canvas.addEventListener('pointermove', (event) => {
 const endDrag = () => { if (state.dragging >= 0) { state.dragging = -1; saveCorners(); } };
 canvas.addEventListener('pointerup', endDrag);
 canvas.addEventListener('pointercancel', endDrag);
-window.addEventListener('resize', () => { if (!loadCorners()) resetCorners(); scheduleDraw(); });
+// Fenêtre redimensionnée ou passage en plein écran : on reprend le calibrage
+// enregistré pour cette taille de fenêtre, sinon les coins par défaut (D-38).
+window.addEventListener('resize', () => { state.corners = loadCorners(); if (!state.corners) resetCorners(); scheduleDraw(); });
 
 // ---------- Réception du plan ----------
 

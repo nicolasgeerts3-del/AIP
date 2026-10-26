@@ -28,7 +28,7 @@ const ui = {
   cameraStage: $('#cameraStage'), cameraPlaceholder: $('#cameraPlaceholder'),
   cameraButton: $('#cameraButton'), captureButton: $('#captureButton'), externalCameraButton: $('#externalCameraButton'),
   cameraDialog: $('#cameraDialog'), cameraSelect: $('#cameraSelect'), refreshCamerasButton: $('#refreshCamerasButton'),
-  useCameraButton: $('#useCameraButton'), cameraDialogStatus: $('#cameraDialogStatus'), cropButton: $('#cropButton'), fileInput: $('#fileInput'),
+  useCameraButton: $('#useCameraButton'), cameraDialogStatus: $('#cameraDialogStatus'), cropButton: $('#cropButton'), fileInput: $('#fileInput'), fileLabel: $('label[for="fileInput"]'),
   fabricWidth: $('#fabricWidth'), fabricHeight: $('#fabricHeight'), fabricLengthHint: $('#fabricLengthHint'), fabricBadge: $('#fabricBadge'), fabricIntro: $('#fabricIntro'),
   analysisPill: $('#analysisPill'), analysisSummary: $('#analysisSummary p'),
   sensitivity: $('#sensitivity'), sensitivityValue: $('#sensitivityValue'), analyzeButton: $('#analyzeButton'),
@@ -96,7 +96,6 @@ function formatArea(cm2) {
   return cm2 < 10000 ? `${integerFormat.format(cm2)} cm²` : `${squareMeterFormat.format(cm2 / 10000)} m²`;
 }
 
-/** Enveloppe un gestionnaire d'événement : toute erreur s'affiche dans la barre de statut. */
 /** Erreur bien visible en haut de la page, en plus de la barre de statut (D-33). */
 function showError(message) {
   const banner = document.getElementById('appBanner');
@@ -105,11 +104,27 @@ function showError(message) {
   showError.timer = setTimeout(() => { banner.hidden = true; }, 12000);
 }
 
+/** Enveloppe un gestionnaire d'événement : toute erreur s'affiche dans la barre de statut et le bandeau. */
 function guard(handler) {
   return async (event) => {
     try { await handler(event); } catch (error) { console.error(error); setStatus(`Erreur : ${error.message}`); showError(`Erreur : ${error.message}`); }
   };
 }
+
+// ---------- Canal vers la fenêtre de projection (D-24) ----------
+
+// Canal partagé avec projection.html (même origine) : la fenêtre de projection
+// dit « hello » à l'ouverture, on lui répond avec le plan courant.
+const projectionChannel = 'BroadcastChannel' in window ? new BroadcastChannel('retiss-projection') : null;
+
+function publishPlan() {
+  if (!projectionChannel) return;
+  const message = state.plan
+    ? planForProjection({ placements: state.plan.placements, gridMask: state.plan.gridMask, fabric: state.fabric, cellCm: CELL_CM, colors: COLORS })
+    : { type: 'plan', fabric: state.fabric, pieces: [], defects: [] };
+  projectionChannel.postMessage({ ...message, version: APP_VERSION });
+}
+projectionChannel?.addEventListener('message', (event) => { if (event.data?.type === 'hello') publishPlan(); });
 
 // ---------- Masques ----------
 
@@ -150,12 +165,15 @@ function maskChanged() {
 function renderStats() {
   const { gridMask } = state.plan ?? getMasks();
   const stats = state.plan?.stats ?? computeSurfaceStats({ gridMask, placements: [], cellCm: CELL_CM, kit: KIT });
-  // [titre, valeur, précision affichée en petit]
+  // [titre, valeur, précision affichée en petit]. D-41 : sans plan, les
+  // valeurs qui en dépendent restent vides au lieu d'annoncer « 0 % » ou une
+  // chute égale à tout le tissu.
+  const planned = (value) => (state.plan ? value : '—');
   const cells = [
-    ['T-SHIRTS COMPLETS', String(stats.completeKits), `${stats.pieceCount} pièces`],
-    ['TISSU SAIN UTILISÉ', `${decimalFormat.format(stats.usageRatio * 100)} %`, 'part du tissu sans défaut'],
-    ['SURFACE DÉCOUPÉE', formatArea(stats.usedCm2), 'surface des patrons'],
-    ['CHUTE', formatArea(stats.lostCm2), 'tissu sain non utilisé'],
+    ['T-SHIRTS COMPLETS', planned(String(stats.completeKits)), state.plan ? `${stats.pieceCount} pièces` : 'lance l’imbrication'],
+    ['TISSU SAIN UTILISÉ', planned(`${decimalFormat.format(stats.usageRatio * 100)} %`), 'part du tissu sans défaut'],
+    ['SURFACE DÉCOUPÉE', planned(formatArea(stats.usedCm2)), 'surface des patrons'],
+    ['CHUTE', planned(formatArea(stats.lostCm2)), 'tissu sain non utilisé'],
     ['DÉFAUTS', formatArea(stats.defectCm2), 'taches et zones exclues'],
     ['TISSU', formatArea(stats.totalCm2), formatFabric(state.fabric)]
   ];
@@ -280,12 +298,14 @@ function applyFabricInputs() {
   }
   ui.fabricWidth.removeAttribute('aria-invalid'); ui.fabricHeight.removeAttribute('aria-invalid');
   if (!setFabric(fabric)) return;
-  if (state.crop.corners && !state.crop.picking) {
-    // L'image redressée doit avoir les proportions du nouveau tissu : on la recalcule.
-    const wasAnalyzed = state.analyzed;
+  if (state.crop.picking) stopCropPicking();
+  if (state.crop.corners) {
+    // L'image redressée doit avoir les proportions du nouveau tissu : on la
+    // recalcule (loadImage relance l'analyse ; les retouches au pinceau,
+    // dessinées sur l'ancienne image, sont perdues).
+    const hadEdits = countMask(state.addedMask) + countMask(state.erasedMask) > 0;
     applyCrop(state.crop.corners);
-    if (wasAnalyzed) runAnalysis();
-    setStatus(`Tissu : ${formatFabric(fabric)} — recadrage recalculé${wasAnalyzed ? ', masque réanalysé (retouches manuelles effacées)' : ''}`);
+    setStatus(`Tissu : ${formatFabric(fabric)} — image redressée et réanalysée${hadEdits ? ' (retouches au pinceau effacées)' : ''}`);
     return;
   }
   setStatus(`Tissu : ${formatFabric(fabric)} — ${proportionMessage()}`);
@@ -436,19 +456,6 @@ async function runNesting() {
 
 // ---------- Projection (D-24) ----------
 
-// Canal partagé avec projection.html (même origine) : la fenêtre de projection
-// dit « hello » à l'ouverture, on lui répond avec le plan courant.
-const projectionChannel = 'BroadcastChannel' in window ? new BroadcastChannel('retiss-projection') : null;
-
-function publishPlan() {
-  if (!projectionChannel) return;
-  const message = state.plan
-    ? planForProjection({ placements: state.plan.placements, gridMask: state.plan.gridMask, fabric: state.fabric, cellCm: CELL_CM, colors: COLORS })
-    : { type: 'plan', fabric: state.fabric, pieces: [], defects: [] };
-  projectionChannel.postMessage({ ...message, version: APP_VERSION });
-}
-projectionChannel?.addEventListener('message', (event) => { if (event.data?.type === 'hello') publishPlan(); });
-
 function openProjection() {
   if (!projectionChannel) throw new Error('ce navigateur ne permet pas la projection (BroadcastChannel absent)');
   const projection = window.open('projection.html', 'retiss-projection', 'popup=yes,width=1280,height=800');
@@ -478,7 +485,7 @@ async function exportPdf() {
     pdf.save('retiss-plan-1-1.pdf');
     setStatus(`PDF généré (${pdf.getNumberOfPages()} pages)`);
   } finally {
-    ui.downloadButton.disabled = !state.plan;
+    ui.downloadButton.disabled = !state.plan?.placements.length;
   }
 }
 
@@ -494,7 +501,7 @@ async function connectCamera(deviceId, label = 'Caméra') {
     state.stream = await startCamera(ui.video, { deviceId });
   } catch (error) {
     // Caméra mémorisée débranchée : on retombe sur la caméra par défaut.
-    if (deviceId && error.name === 'OverconstrainedError') return connectCamera(undefined);
+    if (deviceId && ['OverconstrainedError', 'NotFoundError'].includes(error.name)) return connectCamera(undefined);
     setStatus(`Caméra indisponible : ${error.message}`);
     return false;
   }
@@ -548,6 +555,12 @@ ui.captureButton.addEventListener('click', guard(() => {
   stopCamera(state.stream); state.stream = null; // D-12
   ui.captureButton.disabled = true;
 }));
+
+ui.fileLabel.addEventListener('keydown', (event) => {
+  if (event.key !== 'Enter' && event.key !== ' ') return;
+  event.preventDefault();
+  ui.fileInput.click();
+});
 
 ui.fileInput.addEventListener('change', () => {
   const file = ui.fileInput.files[0];
