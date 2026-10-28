@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="fr" data-app-version="2026-10-26.1">
+<html lang="fr" data-app-version="2026-10-28.1">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -9,15 +9,85 @@
 </head>
 <body>
   <div class="app-banner" id="appBanner" role="alert" hidden></div>
-  <header class="topbar"><a class="brand" href="#top"><span class="brand-mark">R</span>ReTiss</a><span class="project-label">ATELIER / IMBRICATION TEXTILE</span><div class="status"><span class="status-dot"></span><span id="statusText">Prêt à inspecter</span></div></header>
+  <!-- Revue d’ergonomie D-42 à D-53 (campagne tests/usability.js) : barre fixe avec les étapes et le guidage. -->
+  <header class="topbar" id="topbar">
+    <div class="topbar-row">
+      <a class="brand" href="#top"><span class="brand-mark" aria-hidden="true">R</span><span class="brand-name">ReTiss</span></a>
+      <nav class="stepper" aria-label="Étapes">
+        <button class="step" id="stepCapture" type="button" data-target="step1" aria-current="step"><span class="step-num">1</span><b>Photo</b></button><i aria-hidden="true"></i>
+        <button class="step" id="stepAnalyze" type="button" data-target="step2" disabled><span class="step-num">2</span><b>Taches</b></button><i aria-hidden="true"></i>
+        <button class="step" id="stepPlan" type="button" data-target="step3" disabled><span class="step-num">3</span><b>Plan</b></button>
+      </nav>
+    </div>
+    <p class="guide" role="status" aria-live="polite"><span class="status-dot" aria-hidden="true"></span><span id="statusText">Commence par importer une photo du tissu, posé à plat et pris de dessus.</span></p>
+  </header>
   <main id="top">
-    <section class="intro"><div><p class="kicker">Seconde main, seconde vie</p><h1>Découper mieux.<br><em>Gaspiller moins.</em></h1><p class="intro-copy">Un masque de défauts, des pièces indépendantes et un plan de coupe imbriqué sur <span id="fabricIntro">3,00 m × 4,50 m</span>.</p></div><div class="stepper"><span class="step active">01 <b>Capture</b></span><i></i><span class="step" id="stepAnalyze">02 <b>Masque</b></span><i></i><span class="step" id="stepPlan">03 <b>Imbrication</b></span></div></section>
-    <section class="workspace">
-      <div class="capture-panel panel"><div class="panel-head"><div><span class="eyebrow">01 / IMAGE SOURCE</span><h2>Cadre ton tissu</h2></div><span class="capture-badge" id="fabricBadge">3,00 m × 4,50 m</span></div><div class="camera-stage" id="cameraStage"><video id="video" autoplay playsinline muted></video><canvas id="captureCanvas"></canvas><canvas id="sourcePreview"></canvas><div class="camera-placeholder" id="cameraPlaceholder"><div class="lens-icon">◉</div><p>Active la caméra ou importe une photo</p><small>Importe une photo, active la caméra ou connecte ton téléphone, puis recadre le tissu par ses 4 coins.</small></div><div class="frame-corners"></div></div><div class="capture-actions" aria-label="Source de l’image"><button class="button primary" id="cameraButton" type="button">◉ Activer la caméra</button><button class="button secondary" id="externalCameraButton" type="button">📱 Autre caméra (téléphone)</button><label class="button secondary" for="fileInput" tabindex="0">↥ Importer une photo<input id="fileInput" type="file" accept="image/*" hidden></label></div><div class="capture-actions capture-actions-image" aria-label="Actions sur l’image"><button class="button secondary" id="captureButton" type="button" disabled>◌ Figer l’image</button><button class="button secondary" id="cropButton" type="button" disabled>⌗ Recadrer (4 coins)</button></div><div class="fabric-size"><label for="fabricWidth">Largeur du tissu (cm)<input class="select-input" id="fabricWidth" type="number" min="20" max="1000" step="0.5" value="300"></label><label for="fabricHeight">Longueur du tissu (cm)<input class="select-input" id="fabricHeight" type="number" min="20" max="1000" step="0.5" value="450"></label></div><small class="fabric-hint" id="fabricLengthHint"></small></div>
-      <aside class="control-panel panel"><div class="panel-head"><div><span class="eyebrow">02 / MASQUE</span><h2>Détecter les défauts</h2></div><span class="live-pill" id="analysisPill">EN ATTENTE</span></div><div class="analysis-summary" id="analysisSummary"><div class="summary-icon">✦</div><p>Le masque compare la teinte au tissu sain, indépendamment de l’éclairage, et repère les taches plus claires ou plus sombres que leur entourage. Les ombres douces sont ignorées.</p></div><div class="threshold-control"><label for="sensitivity">Facteur MAD <output id="sensitivityValue">3.5</output></label><input id="sensitivity" type="range" min="1.5" max="8" step="0.1" value="3.5"><small>Le masque se recalcule immédiatement.</small></div><button class="button secondary analyze-button" id="analyzeButton" type="button" disabled>↻ Relancer l’analyse <span>→</span></button></aside>
+    <section class="intro">
+      <h1>Plan de découpe sans les taches</h1>
+      <p class="intro-copy">Photographie le tissu, vérifie les taches repérées, puis obtiens un plan de découpe de T-shirts qui les évite, sur <span id="fabricIntro">3,00 m × 4,50 m</span>.</p>
     </section>
-    <section class="editor panel"><div class="panel-head"><div><span class="eyebrow">CORRECTION MANUELLE</span><h2>Peaufiner le masque</h2></div><span class="mask-count" id="maskCount">0 cm²</span></div><div class="editor-layout"><div class="mask-stage"><canvas id="maskCanvas"></canvas><div class="editor-empty" id="editorEmpty">L’analyse apparaîtra ici</div></div><div class="editor-tools"><p class="tool-help">Peins directement sur le masque si une zone a été oubliée.</p><div class="tool-row"><button class="tool-button active" id="addTool">＋ Ajouter un défaut</button><button class="tool-button" id="eraseTool">− Effacer un défaut</button></div><label class="brush-label" for="brushSize">Taille du pinceau <output id="brushValue">5 cm</output></label><input id="brushSize" type="range" min="1" max="20" value="5"><button class="button secondary" id="resetMaskButton">Réinitialiser le masque</button><label class="brush-label" for="orientationMode">Orientation des pièces</label><select class="select-input" id="orientationMode"></select><button class="button primary plan-button" id="planButton" disabled>Imbriquer les patrons <span>✦</span></button><div class="progress-wrap"><div class="progress-bar"><span id="progressBar"></span></div><small id="progressText">Imbrication en attente</small></div></div></div></section>
-    <section class="result panel"><div class="panel-head"><div><span class="eyebrow">03 / RÉSULTAT</span><h2>Plan de découpe imbriqué</h2></div><div class="result-actions"><span class="optimization-state" id="optimizationState">EN ATTENTE</span><button class="button primary" id="projectButton" type="button">▶ Projeter sur le tissu</button><button class="button secondary" id="downloadButton" type="button" disabled>↓ PDF 1:1</button></div></div><div class="result-frame"><canvas id="resultCanvas"></canvas><div class="result-empty" id="resultEmpty"><span>✣</span><p>Le plan apparaîtra ici</p><small>Chaque pièce sera placée indépendamment.</small></div></div><div class="result-stats" id="resultStats"><div><span>T-SHIRTS COMPLETS</span><strong>—</strong></div><div><span>PIÈCES PLACÉES</span><strong>—</strong></div><div><span>SURFACE TOTALE</span><strong>—</strong></div><div><span>SURFACE DÉFECTUEUSE</span><strong>—</strong></div><div><span>SURFACE UTILISÉE</span><strong>—</strong></div><div><span>PERDUE / SAINE</span><strong>—</strong></div></div></section>
+
+    <section class="panel step-panel" id="step1" aria-labelledby="step1Title">
+      <div class="panel-head"><div><span class="eyebrow">Étape 1</span><h2 id="step1Title">Photo du tissu</h2></div><span class="capture-badge" id="fabricBadge">3,00 m × 4,50 m</span></div>
+      <div class="step-layout">
+        <div class="camera-stage" id="cameraStage">
+          <video id="video" autoplay playsinline muted></video><canvas id="captureCanvas"></canvas><canvas id="sourcePreview"></canvas>
+          <label class="camera-placeholder" id="cameraPlaceholder" for="fileInput"><span class="lens-icon" aria-hidden="true">↥</span><p>Glisse une photo ici ou clique pour la choisir</p><small>Tu peux aussi la coller (Ctrl + V) ou utiliser une caméra.</small></label>
+          <p class="crop-hint" id="cropHint" hidden></p>
+          <div class="drop-veil" aria-hidden="true">Dépose la photo ici</div>
+        </div>
+        <div class="step-side">
+          <div class="capture-actions" aria-label="Source de l’image">
+            <label class="button" id="importButton" for="fileInput" tabindex="0" role="button">↥ Importer une photo<input id="fileInput" type="file" accept="image/*" hidden></label>
+            <button class="button" id="cameraButton" type="button">◉ Caméra de l’ordinateur</button>
+            <button class="button" id="externalCameraButton" type="button">📱 Téléphone ou autre caméra</button>
+          </div>
+          <div class="capture-actions" aria-label="Actions sur l’image">
+            <button class="button" id="captureButton" type="button" disabled hidden>◌ Figer l’image</button>
+            <button class="button" id="cropButton" type="button" disabled hidden title="Utile si la photo montre la table ou le sol autour du tissu">⌗ Recadrer sur le tissu (4 coins)</button>
+          </div>
+          <div class="fabric-size"><label for="fabricWidth">Largeur réelle (cm)<input class="select-input" id="fabricWidth" type="number" min="20" max="1000" step="0.5" value="300" inputmode="decimal"></label><label for="fabricHeight">Longueur réelle (cm)<input class="select-input" id="fabricHeight" type="number" min="20" max="1000" step="0.5" value="450" inputmode="decimal"></label></div>
+          <small class="fabric-hint" id="fabricLengthHint"></small>
+          <details class="tips"><summary>Conseils pour une bonne photo</summary><ul><li>Tissu bien à plat, défroissé si possible : les plis marqués peuvent passer pour des taches.</li><li>Appareil au-dessus du centre, parallèle au tissu ; tout le tissu dans le cadre.</li><li>Lumière douce, sans reflet ni ombre nette.</li><li>Si la table ou le sol apparaît autour, utilise « Recadrer ».</li></ul></details>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel step-panel" id="step2" aria-labelledby="step2Title">
+      <div class="panel-head"><div><span class="eyebrow">Étape 2</span><h2 id="step2Title">Vérifier les taches</h2></div><div class="head-pills"><span class="mask-count" id="maskCount">0 cm²</span><span class="live-pill" id="analysisPill">EN ATTENTE</span></div></div>
+      <div class="step-layout">
+        <div class="mask-stage"><canvas id="maskCanvas" aria-label="Photo avec les taches en rouge ; peindre pour corriger"></canvas><div class="brush-cursor" id="brushCursor" hidden></div><div class="editor-empty" id="editorEmpty">Les taches repérées apparaîtront ici en rouge.</div></div>
+        <div class="step-side">
+          <div class="analysis-summary" id="analysisSummary"><span class="summary-icon" aria-hidden="true">✦</span><p>Les taches sont repérées automatiquement dès que la photo est chargée : tout ce qui est en rouge sera évité à la découpe.</p></div>
+          <div class="threshold-control">
+            <label for="sensitivity">Sensibilité de la détection <output id="sensitivityValue">3,5</output></label>
+            <input id="sensitivity" type="range" min="1.5" max="8" step="0.1" value="3.5" aria-describedby="sensitivityEnds">
+            <div class="range-ends" id="sensitivityEnds"><span>← Repère plus de taches</span><span>Ignore plis et reflets →</span></div>
+          </div>
+          <div class="brush-tools">
+            <h3>Corriger au pinceau</h3>
+            <p class="tool-help">Peins sur la photo : en rouge, la zone sera évitée.</p>
+            <div class="tool-row"><button class="tool-button active" id="addTool" type="button" aria-pressed="true">＋ Marquer une tache</button><button class="tool-button" id="eraseTool" type="button" aria-pressed="false">− Effacer (fausse tache)</button></div>
+            <label class="brush-label" for="brushSize">Taille du pinceau <output id="brushValue">5 cm</output></label>
+            <input id="brushSize" type="range" min="1" max="20" value="5">
+            <div class="tool-row"><button class="button" id="undoButton" type="button" disabled title="Ctrl + Z">↶ Annuler</button><button class="button" id="resetMaskButton" type="button">Effacer mes retouches</button></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel step-panel result" id="step3" aria-labelledby="step3Title">
+      <div class="panel-head"><div><span class="eyebrow">Étape 3</span><h2 id="step3Title">Plan de découpe</h2></div><span class="optimization-state" id="optimizationState">EN ATTENTE</span></div>
+      <div class="plan-controls">
+        <label class="brush-label" for="orientationMode">Orientation des pièces<select class="select-input" id="orientationMode"></select></label>
+        <button class="button plan-button" id="planButton" type="button" disabled>✦ Calculer le plan de découpe</button>
+        <div class="result-actions"><button class="button" id="projectButton" type="button" title="Afficher les contours sur le tissu avec un vidéoprojecteur">▶ Projeter sur le tissu</button><button class="button" id="downloadButton" type="button" disabled title="Plan à l’échelle 1:1, à imprimer">↓ PDF 1:1</button></div>
+      </div>
+      <div class="progress-wrap"><div class="progress-bar"><span id="progressBar"></span></div><small id="progressText">Plan pas encore calculé</small></div>
+      <div class="plan-advice" id="planAdvice" hidden><p></p><button class="button" type="button"></button></div>
+      <div class="result-frame"><canvas id="resultCanvas"></canvas><div class="result-empty" id="resultEmpty"><span aria-hidden="true">✣</span><p>Le plan apparaîtra ici</p><small>Les pièces des T-shirts seront placées en évitant les taches.</small></div></div>
+      <div class="result-stats" id="resultStats"></div>
+    </section>
   </main>
 
   <dialog class="camera-dialog" id="cameraDialog" aria-labelledby="cameraDialogTitle">

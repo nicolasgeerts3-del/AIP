@@ -7,7 +7,7 @@ import {
 } from './src/config.js';
 import { computeColorPlanes, detectDefects } from './src/core/detection.js';
 import { fabricWithRatio, formatFabric, gridForFabric, validateFabric } from './src/core/fabric.js';
-import { combineLayers, countMask, createMask, paintStroke, resampleMaxPool } from './src/core/mask.js';
+import { cloneMask, combineLayers, countMask, createMask, paintStroke, resampleMaxPool } from './src/core/mask.js';
 import { buildPieceShapes, nestPieces } from './src/core/nesting.js';
 import { orderCorners, quadRatio, rectifiedSize, warpPerspective } from './src/core/perspective.js';
 import { planForProjection } from './src/core/projection.js';
@@ -28,15 +28,17 @@ const ui = {
   cameraStage: $('#cameraStage'), cameraPlaceholder: $('#cameraPlaceholder'),
   cameraButton: $('#cameraButton'), captureButton: $('#captureButton'), externalCameraButton: $('#externalCameraButton'),
   cameraDialog: $('#cameraDialog'), cameraSelect: $('#cameraSelect'), refreshCamerasButton: $('#refreshCamerasButton'),
-  useCameraButton: $('#useCameraButton'), cameraDialogStatus: $('#cameraDialogStatus'), cropButton: $('#cropButton'), fileInput: $('#fileInput'), fileLabel: $('label[for="fileInput"]'),
+  useCameraButton: $('#useCameraButton'), cameraDialogStatus: $('#cameraDialogStatus'), cropButton: $('#cropButton'), cropHint: $('#cropHint'),
+  fileInput: $('#fileInput'), importButton: $('#importButton'),
   fabricWidth: $('#fabricWidth'), fabricHeight: $('#fabricHeight'), fabricLengthHint: $('#fabricLengthHint'), fabricBadge: $('#fabricBadge'), fabricIntro: $('#fabricIntro'),
-  analysisPill: $('#analysisPill'), analysisSummary: $('#analysisSummary p'),
-  sensitivity: $('#sensitivity'), sensitivityValue: $('#sensitivityValue'), analyzeButton: $('#analyzeButton'),
-  stepAnalyze: $('#stepAnalyze'), stepPlan: $('#stepPlan'),
-  maskStage: $('.mask-stage'), maskCanvas: $('#maskCanvas'), editorEmpty: $('#editorEmpty'), maskCount: $('#maskCount'),
+  analysisPill: $('#analysisPill'), analysisBox: $('#analysisSummary'), analysisSummary: $('#analysisSummary p'),
+  sensitivity: $('#sensitivity'), sensitivityValue: $('#sensitivityValue'), sensitivityControl: $('.threshold-control'),
+  topbar: $('#topbar'), guide: $('.guide'), steps: [$('#stepCapture'), $('#stepAnalyze'), $('#stepPlan')], stepAnalyze: $('#stepAnalyze'), stepPlan: $('#stepPlan'),
+  step1: $('#step1'), step2: $('#step2'), step3: $('#step3'),
+  maskStage: $('.mask-stage'), maskCanvas: $('#maskCanvas'), brushCursor: $('#brushCursor'), editorEmpty: $('#editorEmpty'), maskCount: $('#maskCount'),
   addTool: $('#addTool'), eraseTool: $('#eraseTool'), brushSize: $('#brushSize'), brushValue: $('#brushValue'),
-  resetMaskButton: $('#resetMaskButton'), orientationMode: $('#orientationMode'), planButton: $('#planButton'),
-  progressBar: $('#progressBar'), progressText: $('#progressText'),
+  undoButton: $('#undoButton'), resetMaskButton: $('#resetMaskButton'), orientationMode: $('#orientationMode'), planButton: $('#planButton'),
+  progressBar: $('#progressBar'), progressText: $('#progressText'), planAdvice: $('#planAdvice'),
   resultFrame: $('.result-frame'), resultCanvas: $('#resultCanvas'), resultEmpty: $('#resultEmpty'), resultStats: $('#resultStats'),
   optimizationState: $('#optimizationState'), downloadButton: $('#downloadButton'), projectButton: $('#projectButton')
 };
@@ -44,6 +46,10 @@ const ui = {
 const DEFAULT_SUMMARY = ui.analysisSummary.textContent;
 const CROP_LABEL = ui.cropButton.textContent;
 const CELL_AREA_CM2 = CELL_CM * CELL_CM;
+/** Au-delà de cette part du tissu marquée, on suggère que des plis ou reflets sont pris pour des taches (D-46). */
+const SUSPICIOUS_DEFECT_RATIO = 0.1;
+/** Nombre de retouches au pinceau que l'on peut annuler (D-27). */
+const UNDO_LIMIT = 20;
 
 // D-21 : formes rastérisées par mode d'orientation, calculées à la demande.
 const shapesByMode = new Map();
@@ -72,6 +78,8 @@ const state = {
   brushMode: 'add',
   orientationMode: DEFAULT_ORIENTATION_MODE,
   painting: false,
+  history: [],        // D-27 : calques { added, erased } avant chaque retouche, pour « Annuler »
+  pointer: null,      // dernière position de la souris sur le masque (aperçu du pinceau)
   lastPoint: null,    // dernier point du trait en cours, en pixels image
   maskRenderQueued: false,
   analysisQueued: false
@@ -83,8 +91,46 @@ const state = {
 function readStoredCamera() { try { return localStorage.getItem('retiss.cameraDeviceId') || null; } catch { return null; } }
 function storeCamera(deviceId) { try { localStorage.setItem('retiss.cameraDeviceId', deviceId); } catch { /* navigation privée */ } }
 
-function setStatus(text) { ui.status.textContent = text; }
+function setStatus(text) { ui.status.textContent = text; updateGuide(); }
 function setProgress(percent, text) { ui.progressBar.style.width = `${percent}%`; ui.progressText.textContent = text; }
+
+/**
+ * Étape en cours et action suivante (D-42, D-43) : une seule action est mise
+ * en avant à la fois, le fil d'étapes montre où l'on en est. Appelé après
+ * chaque changement d'état (via setStatus le plus souvent).
+ */
+function updateGuide() {
+  let step = 0; let next = null;
+  if (state.crop.picking) step = 0;
+  else if (state.stream) next = ui.captureButton;
+  else if (!state.image) next = ui.importButton;
+  else if (!state.plan) { step = 1; next = state.nesting ? null : ui.planButton; }
+  else { step = 2; next = state.plan.stats.completeKits ? ui.projectButton : ui.planAdvice.querySelector('button'); }
+  document.querySelectorAll('.next-action').forEach((element) => { if (element !== next) element.classList.remove('next-action'); });
+  next?.classList.add('next-action');
+  ui.steps.forEach((button, index) => {
+    if (index === step) button.setAttribute('aria-current', 'step'); else button.removeAttribute('aria-current');
+    button.classList.toggle('done', index < step || (index === 2 && !!state.plan));
+    button.disabled = index > 0 && !state.image;
+  });
+  ui.guide.classList.toggle('busy', state.nesting);
+}
+
+/** Amène une étape sous la barre du haut (D-43). */
+function goToStep(section, focus) {
+  // Défilement immédiat : une animation est interrompue si l'on clique pendant qu'elle se déroule.
+  section.scrollIntoView({ block: 'start' });
+  focus?.focus({ preventScroll: true });
+}
+
+/** Proportions d'un cadre d'image ; le CSS s'en sert pour le faire tenir en hauteur dans l'écran (D-51). */
+function setStageRatio(stage, ratio) {
+  stage.style.aspectRatio = `${ratio}`;
+  stage.style.setProperty('--ratio', `${ratio}`);
+}
+
+/** Garde les sections visibles sous la barre fixe, quelle que soit sa hauteur. */
+function syncHeaderHeight() { document.documentElement.style.setProperty('--header-h', `${ui.topbar.offsetHeight}px`); }
 // Nombres au format français : espaces fines entre milliers, virgule décimale.
 const integerFormat = new Intl.NumberFormat('fr-FR', { maximumFractionDigits: 0 });
 const decimalFormat = new Intl.NumberFormat('fr-FR', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
@@ -146,6 +192,7 @@ function renderMask() {
   drawMaskOverlay(ui.maskCanvas, ui.captureCanvas, getMasks().imageMask);
   ui.editorEmpty.style.display = 'none';
   ui.maskCount.textContent = formatArea(defectAreaCm2());
+  if (state.analyzed) renderAnalysisSummary();
 }
 
 function scheduleMaskRender() {
@@ -170,7 +217,7 @@ function renderStats() {
   // chute égale à tout le tissu.
   const planned = (value) => (state.plan ? value : '—');
   const cells = [
-    ['T-SHIRTS COMPLETS', planned(String(stats.completeKits)), state.plan ? `${stats.pieceCount} pièces` : 'lance l’imbrication'],
+    ['T-SHIRTS COMPLETS', planned(String(stats.completeKits)), state.plan ? `${stats.pieceCount} pièces` : 'calcule le plan (étape 3)'],
     ['TISSU SAIN UTILISÉ', planned(`${decimalFormat.format(stats.usageRatio * 100)} %`), 'part du tissu sans défaut'],
     ['SURFACE DÉCOUPÉE', planned(formatArea(stats.usedCm2)), 'surface des patrons'],
     ['CHUTE', planned(formatArea(stats.lostCm2)), 'tissu sain non utilisé'],
@@ -195,8 +242,9 @@ function invalidatePlan() {
   ui.resultFrame.classList.remove('has-plan');
   ui.downloadButton.disabled = true;
   ui.optimizationState.textContent = state.nesting ? 'CALCUL…' : state.image ? 'À RECALCULER' : 'EN ATTENTE';
-  ui.stepPlan.classList.remove('active');
+  ui.planAdvice.hidden = true;
   renderStats();
+  updateGuide();
 }
 
 // ---------- Image source ----------
@@ -212,7 +260,7 @@ function loadSource(source) {
   canvas.getContext('2d', { willReadFrequently: true }).drawImage(source, 0, 0, canvas.width, canvas.height);
   state.source = canvas;
   state.crop = { picking: false, points: [], corners: null };
-  ui.cropButton.disabled = false; ui.cropButton.textContent = CROP_LABEL;
+  ui.cropButton.disabled = false; ui.cropButton.hidden = false; ui.cropButton.textContent = CROP_LABEL;
   // D-29 : le plan est imbriqué sur une image aux proportions de la photo.
   state.lengthFromImage = true;
   setFabric(fabricWithRatio(state.fabric.widthCm, canvas.width / canvas.height));
@@ -238,28 +286,30 @@ function loadImage(source) {
   state.addedMask = createMask(imageWidth, imageHeight);
   state.erasedMask = createMask(imageWidth, imageHeight);
   state.analyzed = false; state.derived = null; state.inputVersion += 1;
+  state.history = []; ui.undoButton.disabled = true;
 
   const ratio = width / height;
-  ui.cameraStage.style.aspectRatio = `${ratio}`;
-  ui.maskStage.style.aspectRatio = `${ratio}`;
+  setStageRatio(ui.cameraStage, ratio);
+  setStageRatio(ui.maskStage, ratio);
   ui.cameraStage.classList.add('has-image'); ui.cameraPlaceholder.classList.add('hidden');
-  ui.analyzeButton.disabled = false; ui.analysisPill.textContent = 'PRÊT'; ui.analysisSummary.textContent = DEFAULT_SUMMARY; // D-16
-  ui.stepAnalyze.classList.remove('active'); ui.planButton.disabled = true;
-  setProgress(0, 'Imbrication en attente');
+  ui.analysisPill.textContent = 'PRÊT'; ui.analysisSummary.textContent = DEFAULT_SUMMARY; // D-16
+  ui.planButton.disabled = true;
+  setProgress(0, 'Plan pas encore calculé');
   invalidatePlan(); renderMask();
   // L'analyse est instantanée : on la lance d'office, l'utilisateur n'a plus qu'à ajuster.
   runAnalysis();
-  setStatus(`Image analysée — ${proportionMessage()}`);
+  const warning = proportionMessage();
+  setStatus(`Photo analysée. Vérifie les taches en rouge (étape 2), puis calcule le plan (étape 3).${warning ? ` ${warning}` : ''}`);
 }
 
-/** Compare les proportions de l'image à celles du tissu saisi. */
+/** Avertissement si les proportions de l'image ne sont pas celles du tissu saisi (chaîne vide sinon). */
 function proportionMessage() {
-  if (!state.image) return formatFabric(state.fabric);
+  if (!state.image) return '';
   const imageRatio = state.image.width / state.image.height;
   const fabricRatio = state.fabric.widthCm / state.fabric.heightCm;
   return Math.abs(imageRatio / fabricRatio - 1) > 0.05
-    ? `attention : proportions ${imageRatio.toFixed(2)} ≠ tissu ${fabricRatio.toFixed(2)}, le plan sera étiré`
-    : 'proportions conservées';
+    ? `Attention : la photo n’a pas les proportions du tissu (${decimalFormat.format(imageRatio)} au lieu de ${decimalFormat.format(fabricRatio)}), le plan sera étiré.`
+    : '';
 }
 
 /**
@@ -308,23 +358,45 @@ function applyFabricInputs() {
     setStatus(`Tissu : ${formatFabric(fabric)} — image redressée et réanalysée${hadEdits ? ' (retouches au pinceau effacées)' : ''}`);
     return;
   }
-  setStatus(`Tissu : ${formatFabric(fabric)} — ${proportionMessage()}`);
+  setStatus(`Tissu : ${formatFabric(fabric)}. ${proportionMessage() || (state.image ? 'Recalcule le plan à l’étape 3.' : '')}`.trim());
 }
 
 // ---------- Recadrage (D-19) ----------
 
+/** D-44 : consigne affichée sur la photo elle-même, avec le compteur de coins. */
+function showCropHint() {
+  const done = state.crop.points.length;
+  ui.cropHint.replaceChildren(
+    Object.assign(document.createElement('b'), { textContent: `Coin ${done + 1} / 4 : ` }),
+    'clique un coin du tissu, dans l’ordre que tu veux.',
+    document.createElement('br'),
+    done ? 'Retour arrière : annuler le dernier coin · Échap : abandonner' : 'Échap : abandonner'
+  );
+  ui.cropHint.hidden = false;
+  setStatus(`Recadrage : clique les 4 coins du tissu sur la photo (${done}/4)`);
+}
+
 function startCropPicking() {
   state.crop.picking = true; state.crop.points = [];
-  ui.cameraStage.style.aspectRatio = `${state.source.width / state.source.height}`;
+  setStageRatio(ui.cameraStage, state.source.width / state.source.height);
+  ui.cameraStage.classList.add('picking');
   drawCropPoints(ui.sourcePreview, state.source, []);
   ui.cropButton.textContent = '✕ Annuler le recadrage';
-  setStatus('Clique les 4 coins du tissu sur la photo (0/4)');
+  ui.cameraStage.scrollIntoView({ block: 'nearest' });
+  showCropHint();
+}
+
+function undoCropPoint() {
+  state.crop.points.pop();
+  drawCropPoints(ui.sourcePreview, state.source, state.crop.points);
+  showCropHint();
 }
 
 function stopCropPicking() {
   state.crop.picking = false; state.crop.points = [];
+  ui.cameraStage.classList.remove('picking'); ui.cropHint.hidden = true;
   ui.cropButton.textContent = CROP_LABEL;
-  ui.cameraStage.style.aspectRatio = `${state.image.width / state.image.height}`;
+  setStageRatio(ui.cameraStage, state.image.width / state.image.height);
   ui.sourcePreview.width = state.image.width; ui.sourcePreview.height = state.image.height;
   ui.sourcePreview.getContext('2d').drawImage(ui.captureCanvas, 0, 0);
 }
@@ -334,16 +406,18 @@ function addCropPoint(event) {
   if (!rect.width || !rect.height) return;
   state.crop.points.push([(event.clientX - rect.left) / rect.width * state.source.width, (event.clientY - rect.top) / rect.height * state.source.height]);
   drawCropPoints(ui.sourcePreview, state.source, state.crop.points);
-  if (state.crop.points.length < 4) { setStatus(`Clique les 4 coins du tissu sur la photo (${state.crop.points.length}/4)`); return; }
+  if (state.crop.points.length < 4) { showCropHint(); return; }
   let corners;
   try {
     corners = orderCorners(state.crop.points);
   } catch (error) {
     state.crop.points = [];
     drawCropPoints(ui.sourcePreview, state.source, []);
+    showCropHint();
     setStatus(`${error.message} — recommence (0/4)`);
     return;
   }
+  ui.cameraStage.classList.remove('picking'); ui.cropHint.hidden = true;
   applyCrop(corners);
 }
 
@@ -362,7 +436,24 @@ function applyCrop(corners) {
   state.crop = { picking: false, points: [], corners };
   ui.cropButton.textContent = CROP_LABEL;
   loadImage(canvas);
-  setStatus(`Tissu recadré, perspective corrigée — ${formatFabric(state.fabric)} (saisis la longueur réelle si besoin)`);
+  setStatus(`Tissu recadré, perspective corrigée — ${formatFabric(state.fabric)}. Corrige la longueur réelle si besoin, puis vérifie les taches (étape 2).`);
+}
+
+/** Part du tissu marquée comme défectueuse (0 à 1). */
+function defectRatio() {
+  const { gridMask } = getMasks();
+  return countMask(gridMask) / (gridMask.width * gridMask.height);
+}
+
+/** D-46 : résumé de la détection, avec une alerte si les plis semblent pris pour des taches. */
+function renderAnalysisSummary() {
+  const ratio = defectRatio();
+  const suspicious = ratio > SUSPICIOUS_DEFECT_RATIO;
+  ui.analysisBox.classList.toggle('warn', suspicious);
+  ui.analysisSummary.textContent = `${formatArea(defectAreaCm2())} repérés, soit ${integerFormat.format(ratio * 100)} % du tissu. `
+    + (suspicious
+      ? 'C’est beaucoup : si des plis ou des reflets sont en rouge, glisse le curseur vers « Ignore plis et reflets » ou efface-les au pinceau.'
+      : 'Vérifie que chaque tache est bien en rouge ; corrige au pinceau si besoin.');
 }
 
 function runAnalysis() {
@@ -371,10 +462,9 @@ function runAnalysis() {
   state.autoMask = mask; state.analyzed = true;
   maskChanged();
   ui.analysisPill.textContent = 'ANALYSÉ';
-  ui.analysisSummary.textContent = `${formatArea(defectAreaCm2())} de défauts au total. Ajuste le masque si nécessaire.`;
+  renderAnalysisSummary();
   ui.planButton.disabled = state.nesting;
-  ui.stepAnalyze.classList.add('active');
-  setStatus('Masque analysé');
+  updateGuide();
 }
 
 // ---------- Pinceau ----------
@@ -405,8 +495,38 @@ function paintTo(point) {
 
 function setBrushMode(mode) {
   state.brushMode = mode;
-  ui.addTool.classList.toggle('active', mode === 'add');
-  ui.eraseTool.classList.toggle('active', mode === 'erase');
+  ui.addTool.classList.toggle('active', mode === 'add'); ui.addTool.setAttribute('aria-pressed', String(mode === 'add'));
+  ui.eraseTool.classList.toggle('active', mode === 'erase'); ui.eraseTool.setAttribute('aria-pressed', String(mode === 'erase'));
+  ui.brushCursor.classList.toggle('erase', mode === 'erase');
+}
+
+/** D-45 : cercle de la taille réelle du pinceau sous la souris. */
+function renderBrushCursor() {
+  const rect = ui.maskCanvas.getBoundingClientRect();
+  if (!state.image || !state.pointer || !rect.width) { ui.brushCursor.hidden = true; return; }
+  const { rx, ry } = brushRadii();
+  const stage = ui.maskStage.getBoundingClientRect();
+  Object.assign(ui.brushCursor.style, {
+    left: `${state.pointer.x - stage.left}px`, top: `${state.pointer.y - stage.top}px`,
+    width: `${2 * rx * rect.width / state.image.width}px`, height: `${2 * ry * rect.height / state.image.height}px`
+  });
+  ui.brushCursor.hidden = false;
+}
+
+// D-27 : pile d'annulation des retouches au pinceau (calques ajouts / effacements).
+function pushHistory() {
+  state.history.push({ added: cloneMask(state.addedMask), erased: cloneMask(state.erasedMask) });
+  if (state.history.length > UNDO_LIMIT) state.history.shift();
+  ui.undoButton.disabled = false;
+}
+
+function undo() {
+  const previous = state.history.pop();
+  ui.undoButton.disabled = state.history.length === 0;
+  if (!previous) return;
+  state.addedMask = previous.added; state.erasedMask = previous.erased;
+  maskChanged();
+  setStatus('Dernière retouche annulée');
 }
 
 // ---------- Imbrication (nesting) ----------
@@ -417,18 +537,19 @@ async function runNesting() {
   const { gridMask } = getMasks();
   const shapes = getShapes(state.orientationMode);
   state.nesting = true;
-  ui.planButton.disabled = true; ui.optimizationState.textContent = 'CALCUL…';
-  setProgress(0, 'Optimisation · 0 %');
+  ui.planButton.disabled = true; ui.optimizationState.textContent = 'CALCUL…'; ui.planAdvice.hidden = true;
+  setProgress(0, 'Calcul du plan · 0 %');
+  setStatus('Calcul du plan de découpe… (quelques secondes)');
   try {
     const result = await nestPieces({
       gridMask, shapes, clearance: SAFE_CLEARANCE_CELLS, kit: KIT,
-      onProgress: (fraction) => setProgress(fraction * 100, `Optimisation · ${Math.round(fraction * 100)} %`),
+      onProgress: (fraction) => setProgress(fraction * 100, `Calcul du plan · ${Math.round(fraction * 100)} %`),
       shouldAbort: () => state.inputVersion !== version // D-08 : résultat périmé si une entrée a changé
     });
     if (result.aborted) {
       setProgress(0, 'Calcul interrompu');
       ui.optimizationState.textContent = 'À RECALCULER';
-      setStatus('Masque, tissu ou orientation modifié pendant le calcul : relance l’imbrication');
+      setStatus('Taches, tissu ou orientation modifiés pendant le calcul : relance le calcul du plan');
       return;
     }
     if (!result.validation.ok) {
@@ -444,13 +565,37 @@ async function runNesting() {
     ui.resultFrame.classList.add('has-plan');
     renderStats();
     ui.downloadButton.disabled = placements.length === 0;
-    ui.optimizationState.textContent = 'TERMINÉ'; ui.stepPlan.classList.add('active');
-    setStatus(`${placements.length} pièces placées · ${state.plan.stats.completeKits} T-shirts complets`);
+    ui.optimizationState.textContent = 'TERMINÉ';
+    const kits = state.plan.stats.completeKits;
+    showPlanAdvice(kits);
+    setStatus(kits
+      ? `${kits} T-shirt${kits > 1 ? 's' : ''} complet${kits > 1 ? 's' : ''} (${placements.length} pièces placées). Projette le plan sur le tissu ou télécharge le PDF 1:1.`
+      : 'Aucun T-shirt complet ne tient sur le tissu : lis l’explication à l’étape 3.');
     publishPlan();
-    setProgress(100, 'Imbrication terminée');
+    setProgress(100, 'Plan calculé');
+    // D-47 : le résultat s'affiche à l'écran, sans avoir à le chercher.
+    if (ui.step3.getBoundingClientRect().top < 0 || ui.resultFrame.getBoundingClientRect().top > innerHeight * 0.6) goToStep(ui.step3);
   } finally {
     state.nesting = false;
     ui.planButton.disabled = !state.analyzed;
+    updateGuide();
+  }
+}
+
+/** D-48 : un plan sans T-shirt est expliqué, avec un bouton qui mène à la correction. */
+function showPlanAdvice(kits) {
+  ui.planAdvice.hidden = kits > 0;
+  if (kits > 0) return;
+  const [text, button] = [ui.planAdvice.querySelector('p'), ui.planAdvice.querySelector('button')];
+  const ratio = defectRatio();
+  if (ratio > SUSPICIOUS_DEFECT_RATIO / 2) {
+    text.textContent = `Aucun T-shirt complet ne tient : ${integerFormat.format(ratio * 100)} % du tissu est marqué comme taché, en petites zones dispersées. Si ce sont des plis ou des reflets, rends la détection moins sensible ou efface ces zones au pinceau.`;
+    button.textContent = 'Ajuster la détection (étape 2)';
+    button.onclick = () => goToStep(ui.step2, ui.sensitivity);
+  } else {
+    text.textContent = `Aucun T-shirt complet ne tient sur ${formatFabric(state.fabric)}. Vérifie la taille réelle du tissu : un T-shirt demande environ 1,1 m × 0,8 m.`;
+    button.textContent = 'Vérifier la taille du tissu (étape 1)';
+    button.onclick = () => goToStep(ui.step1, ui.fabricWidth);
   }
 }
 
@@ -505,11 +650,11 @@ async function connectCamera(deviceId, label = 'Caméra') {
     setStatus(`Caméra indisponible : ${error.message}`);
     return false;
   }
-  ui.cameraStage.style.aspectRatio = `${ui.video.videoWidth / ui.video.videoHeight}`;
+  setStageRatio(ui.cameraStage, ui.video.videoWidth / ui.video.videoHeight);
   ui.cameraStage.classList.remove('has-image'); ui.cameraPlaceholder.classList.add('hidden');
-  ui.captureButton.disabled = false;
-  ui.cameraStage.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
-  setStatus(`« ${label} » connectée (${ui.video.videoWidth} × ${ui.video.videoHeight}) — clique « Figer l’image »`);
+  ui.captureButton.disabled = false; ui.captureButton.hidden = false;
+  ui.cameraStage.scrollIntoView({ block: 'nearest' });
+  setStatus(`« ${label} » connectée (${ui.video.videoWidth} × ${ui.video.videoHeight}) — cadre le tissu puis clique « Figer l’image »`);
   return true;
 }
 
@@ -553,23 +698,52 @@ ui.cameraButton.addEventListener('click', guard(async () => {
 ui.captureButton.addEventListener('click', guard(() => {
   loadSource(ui.video);
   stopCamera(state.stream); state.stream = null; // D-12
-  ui.captureButton.disabled = true;
+  ui.captureButton.disabled = true; ui.captureButton.hidden = true;
+  updateGuide();
 }));
 
-ui.fileLabel.addEventListener('keydown', (event) => {
+ui.importButton.addEventListener('keydown', (event) => {
   if (event.key !== 'Enter' && event.key !== ' ') return;
   event.preventDefault();
   ui.fileInput.click();
 });
 
+/** Charge un fichier image, quelle que soit sa provenance (bouton, glisser-déposer, collage). */
+function loadFile(file) {
+  if (!file.type.startsWith('image/')) { setStatus(`« ${file.name} » n’est pas une image : choisis une photo (JPEG, PNG, WebP…)`); return; }
+  setStatus('Lecture de la photo…');
+  const image = new Image(); const url = URL.createObjectURL(file);
+  image.onload = guard(() => { URL.revokeObjectURL(url); loadSource(image); });
+  image.onerror = () => { URL.revokeObjectURL(url); setStatus('Impossible de lire cette image : essaie une photo JPEG ou PNG'); };
+  image.src = url;
+}
+
 ui.fileInput.addEventListener('change', () => {
   const file = ui.fileInput.files[0];
   ui.fileInput.value = ''; // D-13 : permet de réimporter le même fichier
+  if (file) loadFile(file);
+});
+
+// D-49 : glisser-déposer une photo n'importe où sur la page, ou la coller (Ctrl + V).
+const draggedFiles = (event) => [...(event.dataTransfer?.types ?? [])].includes('Files');
+let dragDepth = 0;
+document.addEventListener('dragenter', (event) => { if (draggedFiles(event)) { dragDepth += 1; document.body.classList.add('dragging'); } });
+document.addEventListener('dragleave', () => { dragDepth = Math.max(0, dragDepth - 1); if (!dragDepth) document.body.classList.remove('dragging'); });
+document.addEventListener('dragover', (event) => { if (draggedFiles(event)) event.preventDefault(); });
+document.addEventListener('drop', (event) => {
+  dragDepth = 0; document.body.classList.remove('dragging');
+  const file = event.dataTransfer?.files[0];
   if (!file) return;
-  const image = new Image(); const url = URL.createObjectURL(file);
-  image.onload = guard(() => { URL.revokeObjectURL(url); loadSource(image); });
-  image.onerror = () => { URL.revokeObjectURL(url); setStatus('Impossible de lire cette image'); };
-  image.src = url;
+  event.preventDefault(); // sinon le navigateur ouvre la photo à la place de l'appli
+  if (state.crop.picking) stopCropPicking();
+  loadFile(file);
+});
+document.addEventListener('paste', (event) => {
+  const file = [...(event.clipboardData?.files ?? [])].find((item) => item.type.startsWith('image/'));
+  if (!file) return;
+  event.preventDefault();
+  if (state.crop.picking) stopCropPicking();
+  loadFile(file);
 });
 
 ui.cropButton.addEventListener('click', guard(() => {
@@ -581,43 +755,59 @@ ui.sourcePreview.addEventListener('click', guard((event) => { if (state.crop.pic
 ui.fabricWidth.addEventListener('change', guard(applyFabricInputs));
 ui.fabricHeight.addEventListener('change', guard(applyFabricInputs));
 
-ui.analyzeButton.addEventListener('click', guard(runAnalysis));
-
 ui.sensitivity.addEventListener('input', () => {
-  ui.sensitivityValue.textContent = Number(ui.sensitivity.value).toFixed(1);
+  ui.sensitivityValue.textContent = decimalFormat.format(Number(ui.sensitivity.value));
   if (!state.image || state.analysisQueued) return;
   state.analysisQueued = true;
   requestAnimationFrame(guard(() => { state.analysisQueued = false; runAnalysis(); }));
 });
 
-ui.brushSize.addEventListener('input', () => { ui.brushValue.textContent = `${ui.brushSize.value} cm`; });
+ui.brushSize.addEventListener('input', () => { ui.brushValue.textContent = `${ui.brushSize.value} cm`; renderBrushCursor(); });
 ui.addTool.addEventListener('click', () => setBrushMode('add'));
 ui.eraseTool.addEventListener('click', () => setBrushMode('erase'));
+ui.undoButton.addEventListener('click', guard(undo));
 
 ui.resetMaskButton.addEventListener('click', () => {
   if (!state.image) return;
+  if (countMask(state.addedMask) + countMask(state.erasedMask) === 0) { setStatus('Aucune retouche au pinceau à effacer'); return; }
+  pushHistory(); // « Effacer mes retouches » s'annule aussi
   state.addedMask = createMask(state.image.width, state.image.height);
   state.erasedMask = createMask(state.image.width, state.image.height);
   maskChanged();
-  setStatus('Retouches manuelles supprimées');
+  setStatus('Retouches au pinceau effacées (↶ Annuler pour les retrouver)');
 });
 
 ui.maskCanvas.addEventListener('pointerdown', guard((event) => {
   if (!state.image || event.button !== 0) return;
   const point = eventToImagePoint(event);
   if (!point) return;
+  pushHistory();
   state.painting = true; state.lastPoint = null;
   ui.maskCanvas.setPointerCapture(event.pointerId);
   paintTo(point);
 }));
 ui.maskCanvas.addEventListener('pointermove', guard((event) => {
+  state.pointer = event.pointerType === 'touch' ? null : { x: event.clientX, y: event.clientY };
+  renderBrushCursor();
   if (!state.painting) return;
   const point = eventToImagePoint(event);
   if (point) paintTo(point);
 }));
+ui.maskCanvas.addEventListener('pointerleave', () => { state.pointer = null; renderBrushCursor(); });
 const endStroke = () => { state.painting = false; state.lastPoint = null; };
 ui.maskCanvas.addEventListener('pointerup', endStroke);
 ui.maskCanvas.addEventListener('pointercancel', endStroke);
+
+// D-50 : raccourcis clavier (hors champs de saisie).
+document.addEventListener('keydown', guard((event) => {
+  if (event.target.closest?.('input:not([type=range]), select, textarea, dialog')) return;
+  if (state.crop.picking && event.key === 'Escape') { event.preventDefault(); stopCropPicking(); setStatus('Recadrage annulé'); return; }
+  if (state.crop.picking && event.key === 'Backspace') { event.preventDefault(); if (state.crop.points.length) undoCropPoint(); return; }
+  if ((event.ctrlKey || event.metaKey) && !event.shiftKey && event.key.toLowerCase() === 'z' && state.history.length) { event.preventDefault(); undo(); }
+}));
+
+ui.steps.forEach((button) => button.addEventListener('click', () => goToStep(document.getElementById(button.dataset.target))));
+new ResizeObserver(syncHeaderHeight).observe(ui.topbar);
 
 ui.orientationMode.replaceChildren(...Object.entries(ORIENTATION_MODES).map(([value, { label }]) => new Option(label, value, false, value === state.orientationMode)));
 ui.orientationMode.addEventListener('change', () => {
@@ -632,7 +822,7 @@ ui.planButton.addEventListener('click', guard(runNesting));
 ui.downloadButton.addEventListener('click', guard(exportPdf));
 ui.projectButton.addEventListener('click', guard(openProjection));
 
-setFabric(state.fabric); renderMask(); renderStats();
+setFabric(state.fabric); renderMask(); renderStats(); updateGuide();
 
 // Accès en lecture pour les tests de bout en bout (tests/e2e.js).
 // D-33 : signale au contrôle de démarrage de index.html que le code est chargé, et en quelle version.

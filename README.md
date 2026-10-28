@@ -21,7 +21,7 @@ Prototype web pour analyser les taches sur un tissu, placer des patrons en évit
 - `src/ui/` — dessin des canvas, accès caméra et fenêtre de projection (`projection-app.js`).
 - `projection.html`, `projection.css` — fenêtre plein écran affichée sur le projecteur.
   - `src/core/projection.js` — calibrage 4 coins et données envoyées au projecteur.
-- `tests/` — tests unitaires (`*.test.js`) et test de bout en bout (`e2e.js`).
+- `tests/` — tests unitaires (`*.test.js`), test de bout en bout (`e2e.js`) et campagne d’ergonomie (`usability.js`) ; `helpers/browser.js` pilote Chrome/Edge.
 - `phot tache/` — image de test.
 - `outils/` — classeurs de comparaison du projet.
 
@@ -48,12 +48,11 @@ Le site se publie tel quel sur Vercel (HTTPS, en-têtes de sécurité, pas de bu
 
 ## Utilisation
 
-1. Saisir la largeur du coupon (en cm). Sans recadrage, la longueur est calculée d’après les proportions de la photo.
-2. Importer une photo, utiliser la caméra de l’ordinateur, ou **📱 Connecter une autre caméra** : un téléphone fixé sur un support au-dessus du tissu, vu comme une webcam. La fenêtre explique la connexion (Lien avec Windows, DroidCam, Iriun, Camo, Caméra de continuité). On voit l’image en direct et on clique **Figer l’image** depuis l’ordinateur.
-3. **Recadrer (4 coins)** : cliquer les 4 coins du tissu sur la photo, dans n'importe quel ordre. Le fond est retiré et la perspective corrigée.
-4. **Analyser l'image**, ajuster le facteur MAD, retoucher le masque au pinceau si besoin.
-5. Choisir l'orientation des pièces (droit-fil par défaut), puis **Imbriquer les patrons**.
-6. **▶ Projeter sur le tissu** : projeter les contours directement sur la table de coupe (guide du matériel, des câbles et des réglages : [docs/PROJECTION.md](docs/PROJECTION.md)), ou télécharger le PDF 1:1.
+La barre du haut montre les 3 étapes (cliquables) et dit toujours quoi faire ensuite ; le bouton orange est la prochaine action.
+
+1. **Photo** — glisser la photo sur la page, la coller (Ctrl + V), cliquer **Importer une photo**, utiliser la caméra de l’ordinateur, ou **📱 Téléphone ou autre caméra** : un téléphone fixé sur un support au-dessus du tissu, vu comme une webcam (la fenêtre explique la connexion : Lien avec Windows, DroidCam, Iriun, Camo, Caméra de continuité ; on clique **Figer l’image** depuis l’ordinateur). Saisir la largeur réelle du tissu ; sans recadrage, la longueur suit les proportions de la photo. Si la table apparaît autour du tissu : **Recadrer sur le tissu (4 coins)**, cliquer les 4 coins dans n’importe quel ordre (Retour arrière : dernier coin, Échap : abandonner).
+2. **Taches** — l’analyse est automatique. Si des plis ou des reflets sont en rouge, glisser **Sensibilité de la détection** vers « Ignore plis et reflets », ou les effacer au pinceau (Ctrl + Z pour annuler).
+3. **Plan** — choisir l’orientation des pièces (droit-fil par défaut), **Calculer le plan de découpe**, puis **▶ Projeter sur le tissu** (guide du matériel et des réglages : [docs/PROJECTION.md](docs/PROJECTION.md)) ou télécharger le PDF 1:1. Si aucun T-shirt ne tient, l’appli explique pourquoi et mène au bon réglage.
 
 Les défauts connus et corrigés sont suivis dans [docs/DEFAUTS.md](docs/DEFAUTS.md).
 
@@ -64,8 +63,11 @@ Node.js 22 ou plus récent est nécessaire.
 ```powershell
 npm test           # tests unitaires (≈ 1 s)
 npm run test:e2e   # scénario complet dans Chrome/Edge headless (≈ 25 s)
+npm run test:usability # campagne d’ergonomie U-01 à U-24, ordinateur et téléphone (≈ 1 min 30)
 npm run bench      # banc d’essai du nesting (T-shirts, surface, temps)
 ```
+
+Critères et résultats de la campagne d’ergonomie : [docs/ERGONOMIE.md](docs/ERGONOMIE.md).
 
 Le test de bout en bout trouve Chrome ou Edge tout seul ; sinon, définir `CHROME_PATH`. Il importe une photo, analyse, retouche au pinceau, lance l’imbrication, exporte le PDF et teste la caméra (simulée).
 

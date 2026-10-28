@@ -7,6 +7,7 @@
     "start": "node tests/helpers/server.js",
     "test": "node --test",
     "test:e2e": "node tests/e2e.js",
+    "test:usability": "node tests/usability.js",
     "bench": "node tests/bench.js"
   },
   "engines": {

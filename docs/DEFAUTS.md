@@ -6,6 +6,7 @@ Chaque défaut a un identifiant `D-xx` qui sert de fil conducteur :
 |-----------------------------|--------------------------------------------|
 | le commit qui le corrige    | `git log --grep "D-17"`                    |
 | le test qui le vérifie      | `npm test -- --test-name-pattern "D-17"`   |
+| les critères d’ergonomie    | `npm run test:usability` (U-xx, voir [ERGONOMIE.md](ERGONOMIE.md)) |
 | l'endroit du code concerné  | rechercher `D-17` dans `src/` et `app.js`  |
 
 Gravité : 🔴 critique (découpe fausse ou appli bloquée) · 🟠 majeur · 🟡 mineur.
@@ -51,12 +52,25 @@ Gravité : 🔴 critique (découpe fausse ou appli bloquée) · 🟠 majeur · �
 | D-39 | 🟡 | Serveur local : une adresse mal formée (« %E0 ») le faisait planter. | Réponse 400. | server |
 | D-40 | 🟡 | « Importer une photo » (un label) ne s'activait pas au clavier. | Entrée / Espace ouvrent le choix de fichier. | e2e |
 | D-41 | 🟡 | Sans plan, les statistiques annonçaient 0 % d'utilisation et une chute égale à tout le tissu. | Valeurs « — » tant qu'aucun plan n'est calculé. | e2e |
+| D-42 | 🟠 | Au premier affichage, aucun bouton d’action n’était visible : le grand titre d’accueil occupait tout l’écran. | Titre réduit ; « Importer une photo » visible sans défiler sur ordinateur et téléphone. | usability U-01 |
+| D-43 | 🟠 | Guidage quasi invisible : statut en 10 px qui disparaissait en défilant, fil d’étapes décoratif, aucune action suivante mise en avant. | Barre du haut fixe : étapes cliquables avec leur état, phrase de guidage ; une seule action orange à la fois (`updateGuide`). | usability U-02 à U-04 |
+| D-44 | 🟡 | Recadrage : consigne seulement dans la barre de statut, impossible d’annuler un coin mal placé. | Consigne et compteur sur la photo, curseur en croix, Retour arrière / Échap. | usability U-10, U-11 |
+| D-45 | 🟡 | Pinceau sans indication de sa taille réelle. | Cercle de la taille réelle sous la souris. | usability U-14 |
+| D-46 | 🟠 | « Facteur MAD » : jargon sans sens indiqué ; aucune alerte quand les plis sont pris pour des taches (vraie photo : 0 T-shirt). | « Sensibilité de la détection » avec ses deux extrémités expliquées ; alerte au-delà de 10 % du tissu marqué. | usability U-05, U-12, U-13 |
+| D-47 | 🟡 | Bouton de calcul dans la section des taches ; sur ordinateur, le plan s’affichait hors de l’écran. | Calcul et résultat dans l’étape 3 ; défilement vers le plan s’il n’est pas visible. | usability U-18 |
+| D-48 | 🟠 | Plan à 0 T-shirt affiché « TERMINÉ » sans explication. | Cause probable expliquée et bouton vers le bon réglage (détection ou taille du tissu). | usability U-17 |
+| D-49 | 🟡 | Pas de glisser-déposer ni de collage ; la zone d’image vide n’était pas cliquable. | Photo déposée n’importe où sur la page, collée (Ctrl + V) ou choisie en cliquant la zone vide. | usability U-06 à U-08 |
+| D-50 | 🟡 | Aucun raccourci clavier. | Ctrl + Z (annuler une retouche), Échap et Retour arrière pendant le recadrage. | usability U-11, U-15 |
+| D-51 | 🟠 | Photo en portrait plus haute que l’écran : impossible de voir les 4 coins à la fois pour recadrer. | Cadres d’image limités à la hauteur visible, proportions conservées (`setStageRatio`). | usability U-10 |
+| D-52 | 🟡 | Accessibilité : 44 textes sous le contraste AA, 33 textes de moins de 12 px, 17 cibles tactiles de moins de 44 px, outils sans `aria-pressed`, « Importer » loin au clavier. | Palette contrastée (orange #b8461f, gris #5d6861), tailles minimales, `aria-pressed`, étapes inactives hors du parcours clavier. | usability U-16, U-20 à U-24 |
+| D-53 | 🟡 | Boutons inutilisables affichés (Figer sans caméra, Recadrer sans photo) et « Relancer l’analyse » inutile (analyse automatique). | Boutons affichés seulement quand ils servent ; « Relancer l’analyse » supprimé. | usability U-09 |
+| D-27 (partiel) | 🟡 | Pinceau sans annulation. | Bouton « Annuler » et Ctrl + Z (20 retouches) ; « Effacer mes retouches » annulable. Le zoom reste ouvert. | usability U-15 |
 
 ## Ouverts
 
 | ID | Gravité | Défaut | Piste |
 |----|---------|--------|-------|
 | D-25 | 🟠 | Pas de marge de couture visible ni de pièces en miroir ; DOS et DEVANT presque identiques. | À valider avec les vrais patrons. |
-| D-27 | 🟡 | Pinceau sans annulation ni zoom, utilisable à la souris uniquement. | Pile d'annulation, zoom. |
+| D-27 | 🟡 | Pinceau sans zoom (l’annulation est faite). | Zoom et déplacement dans l’image. |
 | D-28 | 🟡 | Le filtre « petites taches » passe après la dilatation, il ne supprime jamais rien. | Le placer avant la dilatation. |
 | D-34 | 🟡 | Un coupon plus grand que la zone couverte par le projecteur doit être découpé en plusieurs fois, sans aide de l'appli. | Projection par zones : calibrer sur une portion du tissu et faire défiler les zones. |

@@ -1,96 +1,25 @@
 // Test de bout en bout : pilote Chrome/Edge en mode headless via le protocole
 // DevTools (WebSocket natif de Node 22), sans dépendance à installer.
 // Usage : npm run test:e2e   (variable CHROME_PATH pour choisir le navigateur)
-import { spawn } from 'node:child_process';
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
+import * as browserTools from './helpers/browser.js';
 import { startServer } from './helpers/server.js';
 
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
-const BROWSERS = [
-  process.env.CHROME_PATH,
-  'C:/Program Files/Google/Chrome/Application/chrome.exe',
-  'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe',
-  '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
-  '/usr/bin/google-chrome', '/usr/bin/chromium', '/usr/bin/chromium-browser'
-].filter(Boolean);
-
-const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-
-async function launchBrowser() {
-  const executable = BROWSERS.find((path) => existsSync(path));
-  if (!executable) throw new Error('Aucun Chrome/Edge trouvé : définir CHROME_PATH');
-  const profile = mkdtempSync(join(tmpdir(), 'retiss-e2e-'));
-  const child = spawn(executable, [
-    '--headless=new', '--remote-debugging-port=0', `--user-data-dir=${profile}`,
-    '--use-fake-ui-for-media-stream', '--use-fake-device-for-media-stream',
-    '--no-first-run', '--no-default-browser-check', '--window-size=1280,1600', 'about:blank'
-  ], { stdio: 'ignore' });
-  const portFile = join(profile, 'DevToolsActivePort');
-  for (let i = 0; i < 100 && !existsSync(portFile); i += 1) await delay(100);
-  if (!existsSync(portFile)) throw new Error('Le navigateur n’a pas ouvert son port de débogage');
-  await delay(100);
-  const port = readFileSync(portFile, 'utf8').split('\n')[0].trim();
-  const targets = await (await fetch(`http://127.0.0.1:${port}/json/list`)).json();
-  const page = targets.find((target) => target.type === 'page');
-  const close = () => { child.kill(); setTimeout(() => rmSync(profile, { recursive: true, force: true }), 500); };
-  return { wsUrl: page.webSocketDebuggerUrl, port, close };
-}
-
-function connect(wsUrl) {
-  const socket = new WebSocket(wsUrl);
-  const pending = new Map(); const listeners = [];
-  let nextId = 1;
-  socket.addEventListener('message', (event) => {
-    const message = JSON.parse(event.data);
-    if (message.id && pending.has(message.id)) {
-      const { resolve, reject } = pending.get(message.id); pending.delete(message.id);
-      if (message.error) reject(new Error(message.error.message)); else resolve(message.result);
-    } else if (message.method) listeners.forEach((listener) => listener(message));
-  });
-  const send = (method, params = {}) => new Promise((resolve, reject) => {
-    const id = nextId++; pending.set(id, { resolve, reject });
-    socket.send(JSON.stringify({ id, method, params }));
-  });
-  return new Promise((resolve, reject) => {
-    socket.addEventListener('open', () => resolve({ send, on: (listener) => listeners.push(listener), close: () => socket.close() }));
-    socket.addEventListener('error', () => reject(new Error('Connexion DevTools impossible')));
-  });
-}
+const { check, connect, delay, launchBrowser } = browserTools;
 
 // ---------- Scénario ----------
 
-const results = [];
+const runner = browserTools.createRunner();
+const { step } = runner;
 let cdp;
 
-async function evaluate(expression, connection = cdp) {
-  const { result, exceptionDetails } = await connection.send('Runtime.evaluate', { expression, awaitPromise: true, returnByValue: true });
-  if (exceptionDetails) throw new Error(exceptionDetails.exception?.description ?? exceptionDetails.text);
-  return result.value;
-}
-
-async function waitFor(expression, { timeout = 10000, message, connection = cdp } = {}) {
-  const start = Date.now();
-  while (Date.now() - start < timeout) {
-    if (await evaluate(expression, connection)) return;
-    await delay(50);
-  }
-  throw new Error(message ?? `Délai dépassé en attendant : ${expression}`);
-}
-
-function check(condition, message) { if (!condition) throw new Error(message); }
-
-async function step(name, body) {
-  const start = Date.now();
-  try {
-    const note = await body();
-    results.push({ name, status: note === 'SKIP' ? 'SKIP' : 'OK', ms: Date.now() - start });
-  } catch (error) {
-    results.push({ name, status: 'ÉCHEC', ms: Date.now() - start, error: error.message });
-  }
-}
+const evaluate = (expression, connection = cdp) => browserTools.evaluate(connection, expression);
+const waitFor = (expression, { connection = cdp, ...options } = {}) => browserTools.waitFor(connection, expression, options);
+const clickAt = (selector, fx, fy) => browserTools.clickAt(cdp, selector, fx, fy);
 
 /** Glisse la souris sur le masque entre deux points exprimés en fractions de l'image. */
 async function drag(points) {
@@ -102,15 +31,6 @@ async function drag(points) {
   for (const point of points.slice(1)) await cdp.send('Input.dispatchMouseEvent', { type: 'mouseMoved', ...toScreen(point), button: 'left', buttons: 1 });
   await cdp.send('Input.dispatchMouseEvent', { type: 'mouseReleased', ...toScreen(points.at(-1)), button: 'left', buttons: 0, clickCount: 1 });
   await delay(80); // laisse passer le requestAnimationFrame du rendu
-}
-
-/** Clic de souris réel sur un élément, en fractions de sa taille affichée. */
-async function clickAt(selector, fx, fy) {
-  await evaluate(`document.querySelector('${selector}').scrollIntoView({ block: 'center' })`);
-  const rect = await evaluate(`(() => { const r = document.querySelector('${selector}').getBoundingClientRect(); return { x: r.left, y: r.top, w: r.width, h: r.height }; })()`);
-  const point = { x: rect.x + fx * rect.w, y: rect.y + fy * rect.h };
-  await cdp.send('Input.dispatchMouseEvent', { type: 'mousePressed', ...point, button: 'left', buttons: 1, clickCount: 1 });
-  await cdp.send('Input.dispatchMouseEvent', { type: 'mouseReleased', ...point, button: 'left', buttons: 0, clickCount: 1 });
 }
 
 const gridAt = (fx, fy) => `(() => { const m = retissDebug.getMasks().gridMask; return m.data[Math.floor(${fy} * m.height) * m.width + Math.floor(${fx} * m.width)]; })()`;
@@ -129,7 +49,7 @@ async function scenario(baseUrl, browser) {
 
   await step('Chargement de la page et des modules', async () => {
     await waitFor('!!window.retissDebug', { message: 'app.js ne s’est pas initialisé' });
-    const disabled = await evaluate("['#analyzeButton', '#planButton', '#downloadButton', '#captureButton'].every((s) => document.querySelector(s).disabled)");
+    const disabled = await evaluate("['#planButton', '#downloadButton', '#captureButton'].every((s) => document.querySelector(s).disabled)");
     check(disabled, 'des boutons sont actifs alors qu’aucune image n’est chargée');
     check(await evaluate(`${text('#maskCount')} === '0 cm²'`), 'compteur de défauts non nul au départ');
     check(await evaluate("[...document.querySelectorAll('#resultStats strong')].slice(0, 4).every((s) => s.textContent === '—')"), '[D-41] statistiques chiffrées alors qu’il n’y a pas de plan');
@@ -141,7 +61,7 @@ async function scenario(baseUrl, browser) {
     await cdp.send('Page.setInterceptFileChooserDialog', { enabled: true });
     let opened = false;
     cdp.on((message) => { if (message.method === 'Page.fileChooserOpened') opened = true; });
-    await evaluate("document.querySelector('label[for=\"fileInput\"]').focus()");
+    await evaluate("document.querySelector('#importButton').focus()");
     await cdp.send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13 });
     await cdp.send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13 });
     await delay(300);
@@ -165,10 +85,10 @@ async function scenario(baseUrl, browser) {
       const input = document.querySelector('#fileInput'); input.files = transfer.files;
       input.dispatchEvent(new Event('change'));
     })()`);
-    await waitFor("!document.querySelector('#analyzeButton').disabled", { message: 'bouton Analyser toujours désactivé' });
+    await waitFor('retissDebug.state.analyzed', { message: 'photo non analysée automatiquement' });
     const image = await evaluate('({ w: retissDebug.state.image.width, h: retissDebug.state.image.height })');
     check(image.w === 400 && image.h === 600, `image chargée en ${image.w}×${image.h}`);
-    check(await evaluate(`${text('#statusText')}.includes('proportions conservées')`), 'statut inattendu');
+    check(await evaluate(`${text('#statusText')}.includes('Photo analysée') && !${text('#statusText')}.includes('proportions')`), 'statut inattendu');
   });
 
   await step('[D-11] L’aperçu de la photo est visible (pas masqué par la vidéo)', async () => {
@@ -181,7 +101,6 @@ async function scenario(baseUrl, browser) {
   });
 
   await step('[D-17][D-18] Analyse automatique : taches détectées, ombre et tissu sain ignorés', async () => {
-    await evaluate("document.querySelector('#analyzeButton').click()");
     await waitFor(`${text('#analysisPill')} === 'ANALYSÉ'`);
     check(await evaluate(gridAt(0.25, 0.25)) === 1, 'tache rouge non détectée');
     check(await evaluate(gridAt(0.75, 0.75)) === 1, 'tache bleue non détectée');
@@ -202,7 +121,7 @@ async function scenario(baseUrl, browser) {
   await step('[D-07] Curseur MAD : recalcule sans perdre les retouches manuelles', async () => {
     await evaluate("(() => { const s = document.querySelector('#sensitivity'); s.value = '6'; s.dispatchEvent(new Event('input')); })()");
     await delay(150);
-    check(await evaluate(`${text('#sensitivityValue')} === '6.0'`), 'valeur du curseur non affichée');
+    check(await evaluate(`${text('#sensitivityValue')} === '6,0'`), 'valeur du curseur non affichée');
     check(await evaluate(gridAt(0.7, 0.1)) === 1, 'le trait manuel a été perdu');
     check(await evaluate(gridAt(0.25, 0.25)) === 1, 'la tache rouge a disparu');
   });
@@ -253,7 +172,7 @@ async function scenario(baseUrl, browser) {
     await drag([[0.6, 0.5], [0.62, 0.5]]);
     await waitFor("!retissDebug.state.nesting", { timeout: 90000 });
     check(await evaluate('retissDebug.state.plan === null'), 'un plan calculé sur l’ancien masque a été conservé');
-    check(await evaluate(`${text('#statusText')}.includes('modifié pendant le calcul')`), 'pas de message expliquant l’annulation');
+    check(await evaluate(`${text('#statusText')}.includes('modifiés pendant le calcul')`), 'pas de message expliquant l’annulation');
   });
 
   await step('Export PDF 1:1', async () => {
@@ -380,7 +299,6 @@ async function scenario(baseUrl, browser) {
     const fabricRatio = await evaluate('retissDebug.state.fabric.widthCm / retissDebug.state.fabric.heightCm');
     check(Math.abs(ratio / fabricRatio - 1) < 0.01, `proportions ${ratio.toFixed(3)} ≠ tissu ${fabricRatio.toFixed(3)}`);
 
-    await evaluate("document.querySelector('#analyzeButton').click()");
     await waitFor(`${text('#analysisPill')} === 'ANALYSÉ'`);
     check(await evaluate(gridAt(0.5, 0.5)) === 1, 'la tache n’est pas au centre du tissu redressé');
     // Le liseré de bord (≤ 3 cm) mélange tissu et fond : il est marqué défaut, ce qui est prudent.
@@ -412,7 +330,7 @@ async function scenario(baseUrl, browser) {
     await evaluate("document.querySelector('#captureButton').click()");
     await waitFor("document.querySelector('#cameraStage').classList.contains('has-image')", { message: 'image non figée' });
     check(await evaluate('retissDebug.state.stream === null'), 'la caméra reste allumée après avoir figé l’image');
-    check(await evaluate("!document.querySelector('#analyzeButton').disabled"), 'image figée non analysable');
+    check(await evaluate('retissDebug.state.analyzed'), 'image figée non analysée');
   });
 
   await step('[D-12][D-29] Caméra (périphérique simulé) : capture, arrêt, proportions', async () => {
@@ -463,10 +381,5 @@ try {
   cdp?.close(); browser.close(); server.close();
 }
 
-for (const { name, status, ms, error } of results) {
-  console.log(`${status === 'OK' ? '✔' : status === 'SKIP' ? '○' : '✖'} ${name} (${ms} ms)${status === 'SKIP' ? ' — ignoré (jsPDF non chargé, pas d’Internet ?)' : ''}`);
-  if (error) console.log(`    → ${error}`);
-}
-const failed = results.filter((result) => result.status === 'ÉCHEC').length;
-console.log(`\n${results.length - failed}/${results.length} étapes réussies`);
+const failed = runner.report(' — ignoré (jsPDF non chargé, pas d’Internet ?)');
 process.exitCode = failed ? 1 : 0;
