@@ -1,13 +1,16 @@
 /* Fenêtre de projection (D-24) : fond noir pour que seuls les contours éclairent le tissu. */
-html, body { margin: 0; height: 100%; background: #000; color: #e7ebe4; font-family: Manrope, system-ui, sans-serif; overflow: hidden; }
+@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700;800&display=swap');
+html, body { margin: 0; height: 100%; background: #000; color: #eef0ff; font-family: Manrope, system-ui, sans-serif; overflow: hidden; }
 canvas { display: block; width: 100vw; height: 100vh; touch-action: none; cursor: crosshair; }
-/* Au centre : les poignées de calibrage sont près des bords, l'aide ne doit pas les recouvrir. */
-.projection-help { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); width: min(460px, calc(100vw - 32px)); box-sizing: border-box; max-height: calc(100vh - 32px); overflow: auto; background: #141a17ee; border: 1px solid #3a463f; border-radius: 4px; padding: 16px 18px; font-size: 13px; line-height: 1.55; }
+/* Panneau d'aide en verre sombre (D-59). Au centre : les poignées de calibrage sont près des bords, l'aide ne doit pas les recouvrir. */
+.projection-help { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); width: min(500px, calc(100vw - 32px)); box-sizing: border-box; max-height: calc(100vh - 32px); overflow: auto; background: rgba(28, 30, 54, .72); -webkit-backdrop-filter: blur(22px) saturate(160%); backdrop-filter: blur(22px) saturate(160%); border: 1px solid rgba(255, 255, 255, .22); border-radius: 26px; padding: 20px 22px; font-size: 13px; line-height: 1.55; box-shadow: 0 20px 60px rgba(0, 0, 0, .5), inset 0 1px 0 rgba(255, 255, 255, .25); }
 .projection-help[hidden] { display: none; }
-.projection-help h1 { font-size: 17px; margin: 0 0 8px; }
-.projection-help ol { margin: 0 0 12px; padding-left: 18px; }
-.projection-actions { display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px; }
-.projection-actions button { font: inherit; font-size: 12px; padding: 7px 8px; border: 1px solid #3a463f; border-radius: 2px; background: #1f2723; color: inherit; cursor: pointer; text-align: left; }
-.projection-actions button:hover { border-color: #e58b3e; }
-.projection-info { margin: 12px 0 0; color: #b9c8bc; font-size: 12px; }
-.projection-info.warning { color: #ffb36b; }
+.projection-help h1 { font-size: 19px; margin: 0 0 8px; letter-spacing: -.02em; }
+.projection-help h2 { font-size: 12px; margin: 14px 0 6px; letter-spacing: .08em; text-transform: uppercase; color: #b9bcff; }
+.projection-help ol { margin: 0 0 4px; padding-left: 18px; }
+.projection-actions { display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px; margin-top: 6px; }
+.projection-actions button { font: inherit; font-size: 12px; font-weight: 600; padding: 9px 12px; border: 1px solid rgba(255, 255, 255, .2); border-radius: 999px; background: rgba(255, 255, 255, .1); color: inherit; cursor: pointer; text-align: left; box-shadow: inset 0 1px 0 rgba(255, 255, 255, .18); transition: background .15s; }
+.projection-actions button:hover { background: rgba(255, 255, 255, .22); }
+.projection-actions button:focus-visible { outline: 2px solid #8f8bff; outline-offset: 2px; }
+.projection-info { margin: 14px 0 0; color: #c9cdf0; font-size: 12px; }
+.projection-info.warning { color: #ffc27a; }

@@ -6,7 +6,7 @@
 // Coins : [haut-gauche, haut-droit, bas-droit, bas-gauche] du tissu, dans le
 // repère du plan (x vers la droite, y vers le bas, origine en haut à gauche).
 import { placementOutline } from './geometry.js';
-import { componentBounds } from './mask.js';
+import { maskContours } from './mask.js';
 import { applyHomography, computeHomography } from './perspective.js';
 
 /** Message envoyé à la fenêtre de projection : tout en centimètres, sans référence aux formes internes. */
@@ -18,10 +18,54 @@ export function planForProjection({ placements, gridMask, fabric, cellCm, colors
       name: placement.name,
       pass: placement.pass,
       color: colors[placement.name] ?? '#ffffff',
+      angle: placement.shape.angle ?? 0, // rotation de la pièce : le droit-fil du patron est vertical à 0°
       polygon: placementOutline(placement).map(([x, y]) => [x * cellCm, y * cellCm])
     })),
-    defects: gridMask ? componentBounds(gridMask).map(({ x0, y0, x1, y1 }) => ({ x0: x0 * cellCm, y0: y0 * cellCm, x1: x1 * cellCm, y1: y1 * cellCm })) : []
+    // D-55 : contour réel de chaque défaut (polygones fermés), pas sa boîte englobante.
+    defects: gridMask ? maskContours(gridMask).map((loop) => loop.map(([x, y]) => [x * cellCm, y * cellCm])) : []
   };
+}
+
+/** Centre de gravité d'un polygone (repli sur la moyenne des sommets si la surface est nulle). */
+export function polygonCentroid(polygon) {
+  let twice = 0; let cx = 0; let cy = 0;
+  for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+    const cross = polygon[j][0] * polygon[i][1] - polygon[i][0] * polygon[j][1];
+    twice += cross; cx += (polygon[j][0] + polygon[i][0]) * cross; cy += (polygon[j][1] + polygon[i][1]) * cross;
+  }
+  if (Math.abs(twice) < 1e-9) return [polygon.reduce((sum, p) => sum + p[0], 0) / polygon.length, polygon.reduce((sum, p) => sum + p[1], 0) / polygon.length];
+  return [cx / (3 * twice), cy / (3 * twice)];
+}
+
+/**
+ * Ordre de découpe guidée : par bandes de `bandCm` de haut, de gauche à droite
+ * puis de droite à gauche (en serpentin), pour limiter les déplacements autour
+ * de la table. Renvoie les indices des pièces.
+ */
+export function cuttingOrder(pieces, bandCm = 40) {
+  const centers = pieces.map((piece) => polygonCentroid(piece.polygon));
+  return pieces.map((_, index) => index).sort((i, j) => {
+    const bandI = Math.floor(centers[i][1] / bandCm); const bandJ = Math.floor(centers[j][1] / bandCm);
+    if (bandI !== bandJ) return bandI - bandJ;
+    return bandI % 2 === 0 ? centers[i][0] - centers[j][0] : centers[j][0] - centers[i][0];
+  });
+}
+
+/**
+ * Flèche du droit-fil d'une pièce, en cm : segment [[x1, y1], [x2, y2]] centré
+ * sur la pièce, parallèle à la longueur du tissu une fois la pièce tournée.
+ * `shift` la décale sur le côté (fraction de la largeur) pour dégager l'étiquette.
+ */
+export function grainLine(piece, fraction = 0.45, shift = 0) {
+  const [cx, cy] = polygonCentroid(piece.polygon);
+  let minX = Infinity; let maxX = -Infinity; let minY = Infinity; let maxY = -Infinity;
+  for (const [x, y] of piece.polygon) { if (x < minX) minX = x; if (x > maxX) maxX = x; if (y < minY) minY = y; if (y > maxY) maxY = y; }
+  const radians = (piece.angle ?? 0) * Math.PI / 180;
+  const dx = -Math.sin(radians); const dy = Math.cos(radians);
+  const half = fraction / 2 * (Math.abs(dx) * (maxX - minX) + Math.abs(dy) * (maxY - minY));
+  const across = shift * (Math.abs(dy) * (maxX - minX) + Math.abs(dx) * (maxY - minY));
+  const ox = cx - dy * across; const oy = cy + dx * across;
+  return [[ox - dx * half, oy - dy * half], [ox + dx * half, oy + dy * half]];
 }
 
 /** Coins par défaut : le tissu centré dans l'écran, proportions conservées, avec une marge. */

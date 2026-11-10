@@ -4,9 +4,15 @@
 //  2. luminosité : écart à la luminosité locale (moyenne glissante), qui
 //     détecte les taches sans changement de teinte (D-18) tout en ignorant les
 //     variations lentes d'éclairage.
+// Les seuils sont exprimés en écarts-types du bruit du tissu (estimés de façon
+// robuste) : le grain d'un tissu texturé relève le seuil tout seul.
+// Le nettoyage se fait par hystérésis (D-54) : un pixel « faible » n'est gardé
+// que s'il appartient à un groupe assez grand ou contenant un pixel « fort ».
+// Un trait fin (crayon, fil tiré) forme un long groupe et reste détecté, alors
+// que le bruit isolé disparaît — l'ancienne érosion effaçait les deux.
 import { DEFAULT_MAD_FACTOR } from '../config.js';
 import { linearLuminance, linearToLab, median, srgbToLinear } from './color.js';
-import { createMask, dilate, erode, fillHoles, removeSmallComponents } from './mask.js';
+import { createMask, dilate, fillHoles, filterComponents } from './mask.js';
 
 const MIN_LUMINANCE = 1e-4;
 
@@ -82,11 +88,39 @@ export function maskedBoxMean(values, excluded, width, height, radius, plain = b
   return sum;
 }
 
-/** Seuil robuste sur des distances échantillonnées : médiane + facteur × MAD. */
-function robustThreshold(sampledDistances, madFactor, minMad) {
-  const center = median(sampledDistances);
-  const mad = Math.max(minMad, median(sampledDistances.map((value) => Math.abs(value - center))));
-  return { threshold: center + madFactor * mad, mad };
+/** Écart-type robuste d'écarts signés centrés sur 0 : 1,4826 × médiane des valeurs absolues. */
+function robustSigma(sampledResiduals, minSigma) {
+  return Math.max(minSigma, 1.4826 * median(sampledResiduals.map(Math.abs)));
+}
+
+/** Rapport entre un pixel « fort » et le seuil de détection (hystérésis). */
+const STRONG_FACTOR = 1.6;
+/** Rapport entre un pixel « ténu » (prolonge une tache déjà retenue) et le seuil de détection. */
+const FAINT_FACTOR = 0.6;
+
+/**
+ * Étend `mask` aux pixels de `candidates` qui le touchent, de proche en proche
+ * (8 voisins) : prolonge un trait dont une partie est trop pâle pour être
+ * détectée seule, sans créer de nouvelle tache.
+ */
+function growInto(mask, candidates) {
+  const { width, height, data } = mask;
+  const queue = [];
+  for (let index = 0; index < data.length; index += 1) if (data[index]) queue.push(index);
+  for (let head = 0; head < queue.length; head += 1) {
+    const current = queue[head]; const x = current % width; const y = (current - x) / width;
+    for (let dy = -1; dy <= 1; dy += 1) {
+      const ny = y + dy;
+      if (ny < 0 || ny >= height) continue;
+      for (let dx = -1; dx <= 1; dx += 1) {
+        const nx = x + dx;
+        if (nx < 0 || nx >= width) continue;
+        const next = ny * width + nx;
+        if (!data[next] && candidates[next]) { data[next] = 1; queue.push(next); }
+      }
+    }
+  }
+  return mask;
 }
 
 /**
@@ -99,7 +133,7 @@ function robustThreshold(sampledDistances, madFactor, minMad) {
  */
 export function detectDefects(planes, {
   madFactor = DEFAULT_MAD_FACTOR, sampleStep = 4, minMad = 0.5,
-  useLuminance = true, localWindowFraction = 0.1, minLuminanceDelta = 4
+  useLuminance = true, localWindowFraction = 0.1, minLuminanceDelta = 4, minChromaDelta = 4, minGroupSize
 } = {}) {
   if (!Number.isFinite(madFactor) || madFactor <= 0) throw new RangeError(`Facteur MAD invalide : ${madFactor}`);
   if (!Number.isInteger(sampleStep) || sampleStep < 1) throw new RangeError(`Pas d’échantillonnage invalide : ${sampleStep}`);
@@ -110,9 +144,19 @@ export function detectDefects(planes, {
   // 1. Teinte (intensité normalisée).
   const center = { a: median(sampledIndexes.map((index) => a[index])), b: median(sampledIndexes.map((index) => b[index])) };
   const chromaDistance = (index) => { const da = a[index] - center.a; const db = b[index] - center.b; return Math.sqrt(da * da + db * db); };
-  const chroma = robustThreshold(sampledIndexes.map(chromaDistance), madFactor, minMad);
+  // Les planchers suivent le curseur : plus sensible = écarts plus faibles acceptés.
+  const floorScale = madFactor / DEFAULT_MAD_FACTOR;
+  // La distance de teinte suit une loi de Rayleigh : médiane = 1,177 × écart-type.
+  const chromaSigma = Math.max(minMad, median(sampledIndexes.map(chromaDistance)) / 1.177);
+  const chroma = { threshold: Math.max(minChromaDelta * floorScale, madFactor * chromaSigma), mad: chromaSigma };
   const raw = createMask(width, height);
-  for (let pixel = 0; pixel < raw.data.length; pixel += 1) raw.data[pixel] = chromaDistance(pixel) > chroma.threshold ? 1 : 0;
+  const strong = new Uint8Array(raw.data.length);
+  const faint = new Uint8Array(raw.data.length);
+  for (let pixel = 0; pixel < raw.data.length; pixel += 1) {
+    const distance = chromaDistance(pixel);
+    if (distance > FAINT_FACTOR * chroma.threshold) faint[pixel] = 1;
+    if (distance > chroma.threshold) { raw.data[pixel] = 1; if (distance > STRONG_FACTOR * chroma.threshold) strong[pixel] = 1; }
+  }
 
   // 2. Luminosité locale. Le fond est recalculé en excluant les taches déjà
   // trouvées : sinon une tache sombre assombrit le fond autour d'elle et le
@@ -126,16 +170,27 @@ export function detectDefects(planes, {
     for (let pass = 0; pass < 3; pass += 1) {
       const background = maskedBoxMean(L, excluded, width, height, radius, plain);
       const residual = (index) => Math.abs(L[index] - background[index]);
-      luminanceThreshold = Math.max(minLuminanceDelta, robustThreshold(sampledIndexes.map(residual), madFactor, minMad).threshold);
+      const sigma = robustSigma(sampledIndexes.filter((index) => !excluded[index]).map((index) => L[index] - background[index]), minMad);
+      luminanceThreshold = Math.max(minLuminanceDelta * floorScale, madFactor * sigma);
       luminanceHits = new Uint8Array(raw.data.length);
-      for (let pixel = 0; pixel < raw.data.length; pixel += 1) if (residual(pixel) > luminanceThreshold) luminanceHits[pixel] = 1;
-      excluded = raw.data.map((value, index) => value | luminanceHits[index]);
+      for (let pixel = 0; pixel < raw.data.length; pixel += 1) {
+        const gap = residual(pixel);
+        if (gap > luminanceThreshold) luminanceHits[pixel] = gap > STRONG_FACTOR * luminanceThreshold ? 2 : 1;
+      }
+      excluded = raw.data.map((value, index) => (value || luminanceHits[index] ? 1 : 0));
     }
-    for (let pixel = 0; pixel < raw.data.length; pixel += 1) if (luminanceHits[pixel]) raw.data[pixel] = 1;
+    const background = maskedBoxMean(L, excluded, width, height, radius, plain);
+    for (let pixel = 0; pixel < raw.data.length; pixel += 1) {
+      if (luminanceHits[pixel]) { raw.data[pixel] = 1; if (luminanceHits[pixel] === 2) strong[pixel] = 1; }
+      if (Math.abs(L[pixel] - background[pixel]) > FAINT_FACTOR * luminanceThreshold) faint[pixel] = 1;
+    }
   }
 
-  // Ouverture (supprime le bruit isolé), dilatation de sécurité, puis on bouche
-  // l'intérieur des grandes taches dont seul le bord ressort du fond local.
+  // Hystérésis (D-54) : les pixels détectés sont regroupés (dilatation d'un
+  // pixel, qui relie aussi les traits en diagonale et sert de marge de
+  // sécurité) ; un groupe est gardé s'il est assez grand ou contient un pixel
+  // fort. Puis on bouche l'intérieur des grandes taches dont seul le bord
+  // ressort du fond local.
   // D-31 : un trou n'est bouché que s'il ne ressemble pas au tissu sain (sinon
   // un fond détecté tout autour de la photo ferait disparaître tout le tissu).
   const healthyL = median(sampledIndexes.map((index) => L[index]));
@@ -144,6 +199,8 @@ export function detectDefects(planes, {
     for (const cell of cells) { lightGap += Math.abs(L[cell] - healthyL); chromaGap += chromaDistance(cell); }
     return lightGap / cells.length > Math.min(luminanceThreshold, 3 * minLuminanceDelta) || chromaGap / cells.length > chroma.threshold;
   };
-  const mask = fillHoles(removeSmallComponents(dilate(erode(raw, 1), 2), 4), looksLikeStain);
+  const groupSize = minGroupSize ?? Math.max(16, Math.round(width * height / 9000));
+  const kept = filterComponents(dilate(raw, 1), (cells) => cells.length >= groupSize || cells.some((cell) => strong[cell]));
+  const mask = fillHoles(growInto(kept, faint), looksLikeStain);
   return { mask, threshold: chroma.threshold, luminanceThreshold, center, mad: chroma.mad };
 }

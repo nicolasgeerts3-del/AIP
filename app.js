@@ -2,15 +2,15 @@
 // modules de src/. Aucun calcul métier ici : détection, nesting, statistiques
 // et PDF vivent dans src/core et src/export, testés sans navigateur.
 import {
-  APP_VERSION, CELL_CM, CELL_MM, DEFAULT_ORIENTATION_MODE, FABRIC, FABRIC_LIMITS, MAX_IMAGE_WIDTH, MAX_SOURCE_WIDTH, ORIENTATION_MODES,
-  SAFE_CLEARANCE_CELLS
+  APP_VERSION, CELL_CM, CELL_MM, DEFAULT_MATERIAL, DEFAULT_QUANTITY, FABRIC, FABRIC_LIMITS, MATERIALS, MAX_IMAGE_WIDTH, MAX_QUANTITY, MAX_SOURCE_WIDTH,
+  materialAngles
 } from './src/config.js';
 import { DEFAULT_MODEL, MODELS } from './src/patterns.js';
 import { computeColorPlanes, detectDefects } from './src/core/detection.js';
 import { fabricWithRatio, formatFabric, gridForFabric, validateFabric } from './src/core/fabric.js';
-import { polygonArea } from './src/core/geometry.js';
+import { placementOutline, pointInPolygon, polygonArea } from './src/core/geometry.js';
 import { cloneMask, combineLayers, countMask, createMask, paintStroke, resampleMaxPool } from './src/core/mask.js';
-import { buildPieceShapes, nestPieces } from './src/core/nesting.js';
+import { buildPieceShapes, nestPieces, validatePlan } from './src/core/nesting.js';
 import { orderCorners, quadRatio, rectifiedSize, warpPerspective } from './src/core/perspective.js';
 import { planForProjection } from './src/core/projection.js';
 import { computeSurfaceStats } from './src/core/stats.js';
@@ -40,7 +40,7 @@ const ui = {
   maskStage: $('.mask-stage'), maskCanvas: $('#maskCanvas'), brushCursor: $('#brushCursor'), editorEmpty: $('#editorEmpty'), maskCount: $('#maskCount'),
   addTool: $('#addTool'), eraseTool: $('#eraseTool'), brushSize: $('#brushSize'), brushValue: $('#brushValue'),
   undoButton: $('#undoButton'), resetMaskButton: $('#resetMaskButton'), patternModel: $('#patternModel'), modelPieces: $('#modelPieces'),
-  orientationMode: $('#orientationMode'), planButton: $('#planButton'),
+  material: $('#material'), materialTip: $('#materialTip'), kitCount: $('#kitCount'), kitMax: $('#kitMax'), planHint: $('#planHint'), planButton: $('#planButton'),
   progressBar: $('#progressBar'), progressText: $('#progressText'), planAdvice: $('#planAdvice'),
   resultFrame: $('.result-frame'), resultCanvas: $('#resultCanvas'), resultEmpty: $('#resultEmpty'), resultStats: $('#resultStats'),
   optimizationState: $('#optimizationState'), downloadButton: $('#downloadButton'), projectButton: $('#projectButton')
@@ -54,15 +54,18 @@ const SUSPICIOUS_DEFECT_RATIO = 0.1;
 /** Nombre de retouches au pinceau que l'on peut annuler (D-27). */
 const UNDO_LIMIT = 20;
 
-// D-21 : formes rastérisées par modèle et mode d'orientation, calculées à la demande.
-const shapesByMode = new Map();
-function getShapes(mode, modelId = state.model) {
-  if (!ORIENTATION_MODES[mode]) throw new Error(`Mode d’orientation inconnu : ${mode}`);
+// D-21, D-56 : formes rastérisées par modèle et par orientations autorisées
+// (celles de la matière : un seul sens pour un tissu à poil), calculées à la demande.
+const shapesCache = new Map();
+function getShapes(modelId = state.model, materialId = state.material) {
   if (!MODELS[modelId]) throw new Error(`Modèle inconnu : ${modelId}`);
-  const key = `${modelId}/${mode}`;
-  if (!shapesByMode.has(key)) shapesByMode.set(key, buildPieceShapes(MODELS[modelId].pieces, { cellCm: CELL_CM, angles: ORIENTATION_MODES[mode].angles }));
-  return shapesByMode.get(key);
+  if (!MATERIALS[materialId]) throw new Error(`Matière inconnue : ${materialId}`);
+  const angles = materialAngles(MATERIALS[materialId]);
+  const key = `${modelId}/${angles.join(',')}`;
+  if (!shapesCache.has(key)) shapesCache.set(key, buildPieceShapes(MODELS[modelId].pieces, { cellCm: CELL_CM, angles }));
+  return shapesCache.get(key);
 }
+function currentMaterial() { return MATERIALS[state.material]; }
 
 /** Modèle choisi à l'étape 3 : pièces, composition, couleurs et noms (« T-shirt » / « T-shirts »). */
 function currentModel() { return MODELS[state.model]; }
@@ -88,7 +91,9 @@ const state = {
   cameraDeviceId: readStoredCamera(), // D-32 : caméra choisie (téléphone, webcam…), mémorisée sur ce navigateur
   brushMode: 'add',
   model: DEFAULT_MODEL, // patron à découper (src/patterns.js)
-  orientationMode: DEFAULT_ORIENTATION_MODE,
+  material: DEFAULT_MATERIAL, // matière du tissu : sens des pièces, marge, tolérance au grain (D-56)
+  quantity: DEFAULT_QUANTITY, // nombre d'exemplaires demandé, ou 'max' (D-57)
+  drag: null,         // pièce en cours de déplacement à la souris (D-58)
   painting: false,
   history: [],        // D-27 : calques { added, erased } avant chaque retouche, pour « Annuler »
   pointer: null,      // dernière position de la souris sur le masque (aperçu du pinceau)
@@ -232,7 +237,7 @@ function renderStats() {
   const cells = [
     [`${model.many.toUpperCase()} COMPLETS`, planned(String(stats.completeKits)), state.plan ? `${stats.pieceCount} pièces` : 'calcule le plan (étape 3)'],
     ['TISSU SAIN UTILISÉ', planned(`${decimalFormat.format(stats.usageRatio * 100)} %`), 'part du tissu sans défaut'],
-    ['SURFACE DÉCOUPÉE', planned(formatArea(stats.usedCm2)), 'surface des patrons'],
+    ['SURFACE DÉCOUPÉE', planned(formatArea(stats.usedCm2)), state.plan?.placements.length ? `sur ${integerFormat.format(usedLengthCm(state.plan.placements))} cm de longueur` : 'surface des patrons'],
     ['CHUTE', planned(formatArea(stats.lostCm2)), 'tissu sain non utilisé'],
     ['DÉFAUTS', formatArea(stats.defectCm2), 'taches et zones exclues'],
     ['TISSU', formatArea(stats.totalCm2), formatFabric(state.fabric)]
@@ -247,8 +252,24 @@ function renderStats() {
   }));
 }
 
+/** Longueur de tissu occupée par les pièces, en cm (du haut de la plus haute au bas de la plus basse). */
+function usedLengthCm(placements) {
+  let top = Infinity; let bottom = -Infinity;
+  for (const placement of placements) {
+    const y0 = placement.y + placement.shape.minY;
+    top = Math.min(top, y0); bottom = Math.max(bottom, y0 + placement.shape.height);
+  }
+  return (bottom - top) * CELL_CM;
+}
+
+/** Redessine le plan courant ; `highlight` = { index, invalid } met une pièce en avant (déplacement, D-58). */
+function redrawPlan(highlight = null) {
+  const { placements, gridMask, model } = state.plan;
+  drawPlan(ui.resultCanvas, { imageCanvas: ui.captureCanvas, gridMask, placements, colors: model.colors, highlight });
+}
+
 function invalidatePlan() {
-  state.plan = null;
+  state.plan = null; state.drag = null; ui.planHint.hidden = true;
   publishPlan(); // la projection ne doit jamais montrer un plan périmé
   clearCanvas(ui.resultCanvas);
   ui.resultEmpty.style.display = '';
@@ -471,7 +492,9 @@ function renderAnalysisSummary() {
 
 function runAnalysis() {
   if (!state.image) return;
-  const { mask } = detectDefects(state.image.planes, { madFactor: Number(ui.sensitivity.value) });
+  const { texture } = currentMaterial();
+  // D-56 : le grain naturel d'une matière texturée relève les écarts minimaux.
+  const { mask } = detectDefects(state.image.planes, { madFactor: Number(ui.sensitivity.value), minLuminanceDelta: 4 * texture, minChromaDelta: 4 * texture });
   state.autoMask = mask; state.analyzed = true;
   maskChanged();
   ui.analysisPill.textContent = 'ANALYSÉ';
@@ -549,21 +572,23 @@ async function runNesting() {
   const version = state.inputVersion;
   const { gridMask } = getMasks();
   const model = currentModel();
-  const shapes = getShapes(state.orientationMode);
+  const shapes = getShapes();
+  const clearance = currentMaterial().clearanceCells;
+  const requested = state.quantity === 'max' ? null : state.quantity;
   state.nesting = true;
   ui.planButton.disabled = true; ui.optimizationState.textContent = 'CALCUL…'; ui.planAdvice.hidden = true;
   setProgress(0, 'Calcul du plan · 0 %');
   setStatus('Calcul du plan de découpe… (quelques secondes)');
   try {
     const result = await nestPieces({
-      gridMask, shapes, clearance: SAFE_CLEARANCE_CELLS, kit: model.kit,
+      gridMask, shapes, clearance, kit: model.kit, maxKits: requested ?? undefined,
       onProgress: (fraction) => setProgress(fraction * 100, `Calcul du plan · ${Math.round(fraction * 100)} %`),
       shouldAbort: () => state.inputVersion !== version // D-08 : résultat périmé si une entrée a changé
     });
     if (result.aborted) {
       setProgress(0, 'Calcul interrompu');
       ui.optimizationState.textContent = 'À RECALCULER';
-      setStatus('Taches, tissu, modèle ou orientation modifiés pendant le calcul : relance le calcul du plan');
+      setStatus('Taches, tissu, modèle ou matière modifiés pendant le calcul : relance le calcul du plan');
       return;
     }
     if (!result.validation.ok) {
@@ -573,8 +598,11 @@ async function runNesting() {
       return;
     }
     const { placements } = result;
-    state.plan = { placements, gridMask, model, stats: computeSurfaceStats({ gridMask, placements, cellCm: CELL_CM, kit: model.kit }) };
-    drawPlan(ui.resultCanvas, { imageCanvas: ui.captureCanvas, gridMask, placements, colors: model.colors });
+    state.plan = {
+      placements, gridMask, model, clearance, requested, modelId: state.model, materialId: state.material,
+      stats: computeSurfaceStats({ gridMask, placements, cellCm: CELL_CM, kit: model.kit })
+    };
+    redrawPlan();
     ui.resultEmpty.style.display = 'none';
     ui.resultFrame.classList.add('has-plan');
     renderStats();
@@ -582,9 +610,10 @@ async function runNesting() {
     ui.optimizationState.textContent = 'TERMINÉ';
     const kits = state.plan.stats.completeKits;
     showPlanAdvice(kits);
-    setStatus(kits
-      ? `${countLabel(kits, model)} (${placements.length} pièces placées). Projette le plan sur le tissu ou télécharge le PDF 1:1.`
-      : `Aucun ${model.one} complet ne tient sur le tissu : lis l’explication à l’étape 3.`);
+    ui.planHint.hidden = kits === 0;
+    if (!kits) setStatus(`Aucun ${model.one} complet ne tient sur le tissu : lis l’explication à l’étape 3.`);
+    else if (requested && kits < requested) setStatus(`Seulement ${countLabel(kits, model)} sur ${requested} demandés : le tissu sain ne suffit pas pour plus. Projette le plan ou télécharge le PDF 1:1.`);
+    else setStatus(`${countLabel(kits, model)} (${placements.length} pièces placées). Projette le plan sur le tissu ou télécharge le PDF 1:1.`);
     publishPlan();
     setProgress(100, 'Plan calculé');
     // D-47 : le résultat s'affiche à l'écran, sans avoir à le chercher.
@@ -853,14 +882,111 @@ ui.patternModel.addEventListener('change', () => {
 });
 renderModelPieces();
 
-ui.orientationMode.replaceChildren(...Object.entries(ORIENTATION_MODES).map(([value, { label }]) => new Option(label, value, false, value === state.orientationMode)));
-ui.orientationMode.addEventListener('change', () => {
-  state.orientationMode = ui.orientationMode.value;
-  // Un plan calculé avec d'autres orientations n'est plus valable.
+// D-56 : matière du tissu. Elle change le sens des pièces, la marge et la
+// tolérance de la détection : l'analyse est relancée et le plan invalidé.
+function renderMaterialTip() {
+  const material = currentMaterial();
+  ui.materialTip.textContent = `${material.tip} Marge : ${decimalFormat.format(material.clearanceCells * CELL_CM)} cm.`;
+}
+ui.material.replaceChildren(...Object.entries(MATERIALS).map(([value, { label }]) => new Option(label, value, false, value === state.material)));
+ui.material.addEventListener('change', guard(() => {
+  state.material = ui.material.value;
+  renderMaterialTip();
   state.inputVersion += 1;
   invalidatePlan();
-  setStatus(state.orientationMode === 'droit-fil' ? 'Pièces alignées sur le droit-fil' : 'Attention : ce mode ne respecte pas le droit-fil');
-});
+  if (state.image) runAnalysis();
+  setStatus(`Matière : ${currentMaterial().label}. ${currentMaterial().oneWay ? 'Pièces toutes dans le même sens.' : 'Pièces posées tête-bêche si besoin.'}`);
+}));
+renderMaterialTip();
+
+// D-57 : nombre d'exemplaires à placer (1 par défaut), ou le maximum qui tient.
+function quantityChanged() {
+  const count = Math.round(Number(ui.kitCount.value));
+  const valid = Number.isFinite(count) && count >= 1 && count <= MAX_QUANTITY;
+  ui.kitCount.setAttribute('aria-invalid', String(!valid && !ui.kitMax.checked));
+  ui.kitCount.disabled = ui.kitMax.checked;
+  if (!ui.kitMax.checked && !valid) { setStatus(`Nombre d’exemplaires : entre 1 et ${MAX_QUANTITY}`); return; }
+  const next = ui.kitMax.checked ? 'max' : count;
+  if (next === state.quantity) return;
+  state.quantity = next;
+  state.inputVersion += 1;
+  invalidatePlan();
+  setStatus(next === 'max' ? 'Le plan placera le plus d’exemplaires possible.' : `Le plan placera ${next} exemplaire${next > 1 ? 's' : ''}.`);
+}
+ui.kitCount.max = String(MAX_QUANTITY); ui.kitCount.value = String(DEFAULT_QUANTITY);
+ui.kitCount.addEventListener('change', guard(quantityChanged));
+ui.kitMax.addEventListener('change', guard(quantityChanged));
+
+// ---------- Ajustement manuel du plan (D-58) ----------
+// Comme dans les logiciels de placement professionnels : une pièce se déplace
+// à la souris ; la position est refusée si elle touche un défaut, une autre
+// pièce ou sort du tissu. Double-clic : retourne la pièce (si la matière le permet).
+
+function planPoint(event) {
+  const rect = ui.resultCanvas.getBoundingClientRect(); const { gridMask } = state.plan;
+  return [(event.clientX - rect.left) / rect.width * gridMask.width, (event.clientY - rect.top) / rect.height * gridMask.height];
+}
+function pieceAt([x, y]) {
+  const { placements } = state.plan;
+  for (let index = placements.length - 1; index >= 0; index -= 1) if (pointInPolygon(x, y, placementOutline(placements[index]))) return index;
+  return -1;
+}
+function planIsValid() { return validatePlan(state.plan.placements, state.plan.gridMask, state.plan.clearance).ok; }
+function commitPlanEdit(message) {
+  const { plan } = state;
+  plan.stats = computeSurfaceStats({ gridMask: plan.gridMask, placements: plan.placements, cellCm: CELL_CM, kit: plan.model.kit });
+  redrawPlan(); renderStats(); publishPlan();
+  setStatus(message);
+}
+
+ui.resultCanvas.addEventListener('pointerdown', guard((event) => {
+  if (!state.plan || state.nesting || event.pointerType === 'touch' || event.button !== 0) return;
+  const point = planPoint(event); const index = pieceAt(point);
+  if (index < 0) return;
+  const placement = state.plan.placements[index];
+  state.drag = { index, start: point, origin: { x: placement.x, y: placement.y }, valid: true, moved: false };
+  try { ui.resultCanvas.setPointerCapture(event.pointerId); } catch { /* pointeur déjà relâché */ }
+  ui.resultCanvas.classList.add('dragging');
+}));
+ui.resultCanvas.addEventListener('pointermove', guard((event) => {
+  if (!state.plan) return;
+  if (!state.drag) { ui.resultCanvas.classList.toggle('grabbable', event.pointerType !== 'touch' && pieceAt(planPoint(event)) >= 0); return; }
+  const { drag } = state; const point = planPoint(event);
+  const placement = state.plan.placements[drag.index];
+  const x = drag.origin.x + Math.round(point[0] - drag.start[0]); const y = drag.origin.y + Math.round(point[1] - drag.start[1]);
+  if (x === placement.x && y === placement.y) return;
+  placement.x = x; placement.y = y; drag.moved = true;
+  drag.valid = planIsValid();
+  redrawPlan({ index: drag.index, invalid: !drag.valid });
+}));
+function endPieceDrag() {
+  const { drag } = state;
+  if (!drag || !state.plan) return;
+  state.drag = null; ui.resultCanvas.classList.remove('dragging');
+  const placement = state.plan.placements[drag.index];
+  if (!drag.moved) return;
+  if (!drag.valid) {
+    placement.x = drag.origin.x; placement.y = drag.origin.y;
+    redrawPlan();
+    setStatus('Position refusée : la pièce touche une tache, une autre pièce ou sort du tissu. Elle est revenue à sa place.');
+    return;
+  }
+  commitPlanEdit('Pièce déplacée. Le plan projeté et le PDF suivent.');
+}
+ui.resultCanvas.addEventListener('pointerup', guard(endPieceDrag));
+ui.resultCanvas.addEventListener('pointercancel', guard(endPieceDrag));
+ui.resultCanvas.addEventListener('dblclick', guard((event) => {
+  if (!state.plan || state.nesting) return;
+  const index = pieceAt(planPoint(event));
+  if (index < 0) return;
+  const placement = state.plan.placements[index];
+  const options = getShapes(state.plan.modelId, state.plan.materialId)[placement.name];
+  if (options.length < 2) { setStatus(`${MATERIALS[state.plan.materialId].label} : tissu à sens, les pièces ne se retournent pas.`); return; }
+  const previous = placement.shape;
+  placement.shape = options[(options.findIndex((shape) => shape.angle === previous.angle) + 1) % options.length];
+  if (!planIsValid()) { placement.shape = previous; setStatus('Impossible de retourner la pièce ici : elle toucherait une tache ou une autre pièce.'); return; }
+  commitPlanEdit('Pièce retournée (tête-bêche).');
+}));
 
 ui.planButton.addEventListener('click', guard(runNesting));
 ui.downloadButton.addEventListener('click', guard(exportPdf));

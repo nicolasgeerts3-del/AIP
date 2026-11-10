@@ -3,7 +3,7 @@
 // qu'à un seul endroit.
 
 /** Version du code, comparée à celle de index.html au démarrage (D-33). À changer à chaque livraison. */
-export const APP_VERSION = '2026-11-10.1';
+export const APP_VERSION = '2026-11-12.1';
 
 /** Dimensions du coupon proposées par défaut ; modifiables dans l'interface (D-20). */
 export const FABRIC = Object.freeze({ widthCm: 300, heightCm: 450 });
@@ -30,6 +30,34 @@ export const ORIENTATION_MODES = Object.freeze({
   libre: { label: 'Libre, pas de 15° (ignore le droit-fil)', angles: Array.from({ length: 24 }, (_, index) => index * 15) }
 });
 export const DEFAULT_ORIENTATION_MODE = 'droit-fil';
+
+/**
+ * Matières proposées à l'étape 3 (D-56). Chacune règle trois choses :
+ *  - oneWay : tissu à sens (poil, reflet) → toutes les pièces dans le même sens
+ *    (0° seulement) ; sinon elles peuvent être posées tête-bêche (0° / 180°) ;
+ *  - clearanceCells : marge autour des défauts et entre les pièces, plus large
+ *    pour les tissus épais ou qui s'effilochent (1 cellule = 0,5 cm) ;
+ *  - texture : relève les seuils de détection pour ne pas prendre le grain
+ *    naturel du tissu (côtes, armure, poil) pour des taches.
+ */
+export const MATERIALS = Object.freeze({
+  coton: { label: 'Coton (toile, popeline)', oneWay: false, clearanceCells: 2, texture: 1, tip: 'Tissu stable : les pièces peuvent être posées tête-bêche pour gagner de la place.' },
+  jersey: { label: 'Jersey, maille', oneWay: false, clearanceCells: 2, texture: 1, tip: 'Maille extensible : pose le tissu sans le tendre, sinon les pièces rétrécissent après la coupe.' },
+  jean: { label: 'Jean (denim)', oneWay: false, clearanceCells: 2, texture: 1.3, tip: 'Sergé épais : le grain en diagonale est normal, la détection en tient compte.' },
+  lin: { label: 'Lin', oneWay: false, clearanceCells: 3, texture: 1.4, tip: 'Le lin s’effiloche et a des fils irréguliers : marge portée à 1,5 cm, grain ignoré.' },
+  velours: { label: 'Velours', oneWay: true, clearanceCells: 3, texture: 1.4, tip: 'Tissu à poil : toutes les pièces dans le même sens, sinon la couleur change d’une pièce à l’autre.' },
+  laine: { label: 'Laine (drap, lainage)', oneWay: true, clearanceCells: 3, texture: 1.5, tip: 'Lainage épais avec un sens : pièces dans le même sens, marge portée à 1,5 cm.' },
+  satin: { label: 'Soie, satin', oneWay: true, clearanceCells: 2, texture: 1, tip: 'Tissu à reflet : pièces dans le même sens. Le tissu glisse, fixe-le avant de couper.' },
+  polaire: { label: 'Polaire', oneWay: true, clearanceCells: 2, texture: 1.2, tip: 'Tissu à poil : toutes les pièces dans le même sens.' }
+});
+export const DEFAULT_MATERIAL = 'coton';
+
+/** Orientations autorisées pour une matière : un seul sens pour les tissus à poil ou à reflet. */
+export function materialAngles(material) { return material.oneWay ? [0] : [0, 180]; }
+
+/** Nombre d'exemplaires demandé par défaut, et borne du champ (D-57). */
+export const DEFAULT_QUANTITY = 1;
+export const MAX_QUANTITY = 200;
 
 /** Largeur maximale de l'image analysée (en pixels). */
 export const MAX_IMAGE_WIDTH = 700;

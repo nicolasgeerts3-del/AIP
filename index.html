@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="fr" data-app-version="2026-11-10.1">
+<html lang="fr" data-app-version="2026-11-12.1">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -23,8 +23,8 @@
   </header>
   <main id="top">
     <section class="intro">
-      <h1>Plan de découpe sans les taches</h1>
-      <p class="intro-copy">Photographie le tissu, vérifie les taches repérées, puis obtiens un plan de découpe qui les évite (T-shirt, portefeuille, sac banane…), sur <span id="fabricIntro">3,00 m × 4,50 m</span>.</p>
+      <h1>Découpe ton tissu sans les taches</h1>
+      <p class="intro-copy">Photographie le tissu, vérifie les taches repérées, choisis ton patron : ReTiss place les pièces en évitant les défauts et les projette sur le tissu, sur <span id="fabricIntro">3,00 m × 4,50 m</span>.</p>
     </section>
 
     <section class="panel step-panel" id="step1" aria-labelledby="step1Title">
@@ -61,7 +61,7 @@
           <div class="analysis-summary" id="analysisSummary"><span class="summary-icon" aria-hidden="true">✦</span><p>Les taches sont repérées automatiquement dès que la photo est chargée : tout ce qui est en rouge sera évité à la découpe.</p></div>
           <div class="threshold-control">
             <label for="sensitivity">Sensibilité de la détection <output id="sensitivityValue">3,5</output></label>
-            <input id="sensitivity" type="range" min="1.5" max="8" step="0.1" value="3.5" aria-describedby="sensitivityEnds">
+            <input id="sensitivity" type="range" min="2" max="7" step="0.1" value="3.5" aria-describedby="sensitivityEnds">
             <div class="range-ends" id="sensitivityEnds"><span>← Repère plus de taches</span><span>Ignore plis et reflets →</span></div>
           </div>
           <div class="brush-tools">
@@ -79,15 +79,26 @@
     <section class="panel step-panel result" id="step3" aria-labelledby="step3Title">
       <div class="panel-head"><div><span class="eyebrow">Étape 3</span><h2 id="step3Title">Plan de découpe</h2></div><span class="optimization-state" id="optimizationState">EN ATTENTE</span></div>
       <div class="plan-controls">
-        <label class="brush-label" for="patternModel">Modèle à découper<select class="select-input" id="patternModel"></select></label>
-        <label class="brush-label" for="orientationMode">Orientation des pièces<select class="select-input" id="orientationMode"></select></label>
-        <button class="button plan-button" id="planButton" type="button" disabled>✦ Calculer le plan de découpe</button>
-        <div class="result-actions"><button class="button" id="projectButton" type="button" title="Afficher les contours sur le tissu avec un vidéoprojecteur">▶ Projeter sur le tissu</button><button class="button" id="downloadButton" type="button" disabled title="Plan à l’échelle 1:1, à imprimer">↓ PDF 1:1</button></div>
+        <label class="field" for="patternModel">Modèle à découper<select class="select-input" id="patternModel"></select></label>
+        <label class="field" for="material">Matière du tissu<select class="select-input" id="material"></select></label>
+        <div class="field">
+          <label for="kitCount">Nombre d’exemplaires</label>
+          <div class="quantity-row">
+            <input class="select-input" id="kitCount" type="number" min="1" max="200" step="1" value="1" inputmode="numeric">
+            <label class="switch-label" for="kitMax"><input class="switch" id="kitMax" type="checkbox" role="switch">Le plus possible</label>
+          </div>
+        </div>
         <ul class="model-pieces" id="modelPieces" aria-label="Pièces d’un exemplaire du modèle"></ul>
+        <p class="material-tip" id="materialTip"></p>
+        <div class="plan-actions">
+          <button class="button plan-button" id="planButton" type="button" disabled>✦ Calculer le plan de découpe</button>
+          <div class="result-actions"><button class="button" id="projectButton" type="button" title="Afficher les contours sur le tissu avec un vidéoprojecteur">▶ Projeter sur le tissu</button><button class="button" id="downloadButton" type="button" disabled title="Plan à l’échelle 1:1, à imprimer">↓ PDF 1:1</button></div>
+        </div>
       </div>
       <div class="progress-wrap"><div class="progress-bar"><span id="progressBar"></span></div><small id="progressText">Plan pas encore calculé</small></div>
       <div class="plan-advice" id="planAdvice" hidden><p></p><button class="button" type="button"></button></div>
       <div class="result-frame"><canvas id="resultCanvas"></canvas><div class="result-empty" id="resultEmpty"><span aria-hidden="true">✣</span><p>Le plan apparaîtra ici</p><small>Les pièces du modèle choisi seront placées en évitant les taches.</small></div></div>
+      <p class="plan-hint" id="planHint" hidden>Glisse une pièce à la souris pour la déplacer : elle revient à sa place si elle touche une tache ou une autre pièce. Double-clic : retourne la pièce.</p>
       <div class="result-stats" id="resultStats"></div>
     </section>
   </main>

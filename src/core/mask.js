@@ -102,6 +102,15 @@ function forEachComponent(mask, visit) {
   }
 }
 
+/** Ne garde que les composantes pour lesquelles keep(cellules, boîte) est vrai. */
+export function filterComponents(mask, keep) {
+  const output = createMask(mask.width, mask.height);
+  forEachComponent(mask, (cells, box) => {
+    if (keep(cells, box)) for (const cell of cells) output.data[cell] = 1;
+  });
+  return output;
+}
+
 /** Supprime les composantes de moins de minSize pixels. */
 export function removeSmallComponents(mask, minSize) {
   const output = createMask(mask.width, mask.height);
@@ -210,4 +219,79 @@ export function paintStroke(mask, from, to, rx, ry, value) {
     changed += paintEllipse(mask, from.x + (to.x - from.x) * t, from.y + (to.y - from.y) * t, rx, ry, value);
   }
   return changed;
+}
+
+/**
+ * Contours des zones marquées, en coordonnées de grille (coins de cellules) :
+ * une boucle fermée par bord (extérieur d'une tache ou trou). Les sommets
+ * alignés sont fusionnés, puis chaque boucle est simplifiée à `tolerance`
+ * cellule près (0 : contour exact en escalier).
+ * Sert à dessiner et projeter la forme réelle des défauts (D-55), au lieu de
+ * leur boîte englobante qui recouvrait à tort du tissu sain.
+ */
+export function maskContours(mask, tolerance = 0.75) {
+  const { width, height, data } = mask;
+  const filled = (x, y) => x >= 0 && y >= 0 && x < width && y < height && data[y * width + x] === 1;
+  // Arêtes orientées dans le sens horaire autour des cellules marquées : clé = sommet de départ.
+  const stride = width + 1;
+  const outgoing = new Map();
+  const addEdge = (x0, y0, x1, y1) => {
+    const key = y0 * stride + x0;
+    const list = outgoing.get(key);
+    if (list) list.push(y1 * stride + x1); else outgoing.set(key, [y1 * stride + x1]);
+  };
+  for (let y = 0; y < height; y += 1) {
+    for (let x = 0; x < width; x += 1) {
+      if (!data[y * width + x]) continue;
+      if (!filled(x, y - 1)) addEdge(x, y, x + 1, y);
+      if (!filled(x + 1, y)) addEdge(x + 1, y, x + 1, y + 1);
+      if (!filled(x, y + 1)) addEdge(x + 1, y + 1, x, y + 1);
+      if (!filled(x - 1, y)) addEdge(x, y + 1, x, y);
+    }
+  }
+  const loops = [];
+  for (const [start, list] of outgoing) {
+    while (list.length) {
+      const loop = [];
+      let current = start;
+      do {
+        loop.push([current % stride, Math.floor(current / stride)]);
+        current = outgoing.get(current).pop();
+      } while (current !== start);
+      loops.push(simplifyLoop(loop, tolerance));
+    }
+  }
+  return loops.filter((loop) => loop.length >= 3);
+}
+
+/** Retire les sommets alignés puis applique Douglas-Peucker à une boucle fermée. */
+function simplifyLoop(loop, tolerance) {
+  const corners = loop.filter((point, index) => {
+    const previous = loop[(index + loop.length - 1) % loop.length]; const next = loop[(index + 1) % loop.length];
+    return (point[0] - previous[0]) * (next[1] - point[1]) !== (point[1] - previous[1]) * (next[0] - point[0]);
+  });
+  if (!(tolerance > 0) || corners.length <= 4) return corners;
+  // Coupe la boucle en deux chaînes entre ses deux sommets les plus éloignés du premier.
+  let far = 0; let farDistance = -1;
+  corners.forEach(([x, y], index) => { const d = (x - corners[0][0]) ** 2 + (y - corners[0][1]) ** 2; if (d > farDistance) { farDistance = d; far = index; } });
+  const first = douglasPeucker(corners.slice(0, far + 1), tolerance);
+  const second = douglasPeucker([...corners.slice(far), corners[0]], tolerance);
+  return [...first.slice(0, -1), ...second.slice(0, -1)];
+}
+
+function douglasPeucker(points, tolerance) {
+  const keep = new Uint8Array(points.length); keep[0] = 1; keep[points.length - 1] = 1;
+  const stack = [[0, points.length - 1]];
+  while (stack.length) {
+    const [from, to] = stack.pop();
+    const [ax, ay] = points[from]; const [bx, by] = points[to];
+    const length = Math.hypot(bx - ax, by - ay) || 1;
+    let worst = -1; let worstDistance = tolerance;
+    for (let index = from + 1; index < to; index += 1) {
+      const distance = Math.abs((bx - ax) * (ay - points[index][1]) - (ax - points[index][0]) * (by - ay)) / length;
+      if (distance > worstDistance) { worstDistance = distance; worst = index; }
+    }
+    if (worst >= 0) { keep[worst] = 1; stack.push([from, worst], [worst, to]); }
+  }
+  return points.filter((_, index) => keep[index]);
 }

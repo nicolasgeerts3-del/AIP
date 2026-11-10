@@ -25,7 +25,10 @@ describe('[D-24] projection du plan sur le tissu', () => {
     assert.ok(Math.min(...xs) >= 5 - 1e-9 && Math.min(...ys) >= 10 - 1e-9, 'position en cm incorrecte');
     assert.equal(message.pieces[0].pass, 2);
     assert.equal(message.pieces[0].color, COLORS.BANDE);
-    assert.deepEqual(message.defects, [{ x0: 50, y0: 100, x1: 55, y1: 110 }]);
+    // D-55 : le défaut est transmis par son contour réel (ici un rectangle de 5 × 10 cm).
+    assert.equal(message.defects.length, 1);
+    assert.deepEqual([...message.defects[0]].sort((a, b) => a[0] - b[0] || a[1] - b[1]), [[50, 100], [50, 110], [55, 100], [55, 110]]);
+    assert.equal(message.pieces[0].angle, 0);
     assert.ok(!('shape' in message.pieces[0]), 'données internes transmises');
     assert.doesNotThrow(() => structuredClone(message));
   });

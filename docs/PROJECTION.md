@@ -79,11 +79,12 @@ Elle s'adapte à la résolution du projecteur. Le calibrage est enregistré par 
 ## 5. Procédure de découpe
 
 1. Pose le tissu à plat, bien tendu, sur la table. Il ne doit plus bouger jusqu'à la fin.
-2. Dans ReTiss : photo, recadrage 4 coins, analyse, **Imbriquer les patrons**.
+2. Dans ReTiss : photo, recadrage 4 coins, analyse, choix du modèle et de la matière, **Calculer le plan de découpe**.
 3. Clique **▶ Projeter sur le tissu**. Une fenêtre s'ouvre : fais-la glisser sur l'écran du projecteur, puis appuie sur **F** (plein écran). Sur Chrome ou Edge, **F** peut aussi l'envoyer directement sur le projecteur, après autorisation.
 4. **Calibrage** : fais glisser les poignées **1 à 4** sur les 4 coins réels du tissu. La poignée 1 correspond au coin haut-gauche du plan (celui de la photo recadrée), les suivantes tournent dans le sens horaire. Pour l'ajustement fin : **Tab** sélectionne un coin, les **flèches** le déplacent d'un pixel (Maj + flèches : 10 px).
 5. **Vérification** : au mètre ruban, le carré témoin doit mesurer 10 cm et les carreaux du quadrillage 50 cm. Les contours doivent tomber aux mêmes endroits que les taches réelles.
-6. Appuie sur **C** pour masquer les poignées, **M** pour masquer la mire, puis découpe en suivant les traits.
+6. Appuie sur **C** pour masquer les poignées, **M** pour masquer la mire, puis découpe en suivant les traits. Les taches sont projetées en rouge avec leur forme réelle (**D** les masque) et chaque pièce porte la flèche de son droit-fil (**A**).
+   **Découpe guidée** : **G** met une seule pièce en avant, dans un ordre qui limite les allers-retours autour de la table. **Espace** la coche comme coupée et passe à la suivante ; **N** / **P** (ou → / ←) changent de pièce. **K** fait défiler les couleurs de trait, dont « pièces » (une couleur par type de pièce, comme à l’écran).
 7. Si le tissu ou le projecteur bouge : recommence l'étape 4, ou appuie sur **R** pour repartir du calibrage par défaut.
 
 ReTiss efface aussitôt les contours projetés si le plan change dans la fenêtre principale (masque retouché, autre tissu…) : on ne découpe jamais selon un plan périmé.

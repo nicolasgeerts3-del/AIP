@@ -66,37 +66,66 @@ function fitText(context, text, weight, width) {
   return 100 * width / context.measureText(text).width;
 }
 
-/** Taille des étiquettes « nom + n° » d'une pièce, sur deux lignes. */
-function namedLabelSize(context, placement, frame, maxSize) {
-  return Math.min(maxSize, fitText(context, pieceLabel(placement.name), 700, frame.width), fitText(context, `n° ${placement.pass}`, 600, frame.width), frame.height / 2.6);
+/**
+ * Étiquette d'une pièce, au mieux de la place disponible :
+ *  1. son nom (et « n° x » s'il y a plusieurs exemplaires), à l'horizontale,
+ *     ou à la verticale pour une pièce étroite et haute (languette, attache) ;
+ *  2. sinon son numéro seul, s'il y a plusieurs exemplaires ;
+ *  3. sinon rien : la légende sous les menus donne la couleur de chaque pièce.
+ */
+function drawPieceLabel(context, placement, frame, { numbered, minSize, maxSize }) {
+  const name = pieceLabel(placement.name); const number = `n° ${placement.pass}`;
+  const layout = (width, height) => Math.min(maxSize, fitText(context, name, 700, width), numbered ? fitText(context, number, 600, width) : Infinity, height / (numbered ? 2.6 : 1.5));
+  const flat = layout(frame.width, frame.height); const upright = layout(frame.height, frame.width);
+  let size; let lines; let rotated = false;
+  if (Math.max(flat, upright) >= minSize) {
+    rotated = upright > flat * 1.25;
+    size = rotated ? upright : flat;
+    lines = numbered ? [[name, 700, size], [number, 600, size * 0.85]] : [[name, 700, size]];
+  } else if (numbered) {
+    size = Math.min(maxSize * 0.75, fitText(context, String(placement.pass), 700, frame.width), frame.height / 1.4);
+    if (size < minSize * 0.7) return;
+    lines = [[String(placement.pass), 700, size]];
+  } else return;
+  context.save();
+  context.translate(frame.cx, frame.cy);
+  if (rotated) context.rotate(-Math.PI / 2);
+  context.textAlign = 'center'; context.textBaseline = 'middle'; context.lineJoin = 'round';
+  lines.forEach(([text, weight, lineSize], index) => {
+    const y = (index - (lines.length - 1) / 2) * size * 1.15;
+    context.font = labelFont(lineSize, weight);
+    context.lineWidth = Math.max(2, lineSize / 4); context.strokeStyle = 'rgba(255,255,255,0.85)';
+    context.strokeText(text, 0, y);
+    context.fillStyle = '#141a2b'; context.fillText(text, 0, y);
+  });
+  context.restore();
+}
+
+/** Double flèche du droit-fil, le long de la longueur du tissu, sous l'étiquette de la pièce. */
+function drawGrainArrow(context, placement, frame, scale) {
+  const length = frame.height * 0.5; const head = Math.max(3, scale * 1.6);
+  if (length < head * 5 || frame.width < head * 4) return;
+  // Décalée vers la gauche pour ne pas passer sous l’étiquette.
+  const x = frame.cx - frame.width * 0.3; const y0 = frame.cy - length / 2; const y1 = frame.cy + length / 2;
+  context.save();
+  context.strokeStyle = 'rgba(255,255,255,0.75)'; context.lineWidth = Math.max(1, scale * 0.5); context.lineCap = 'round'; context.lineJoin = 'round';
+  context.setLineDash([scale * 2.2, scale * 1.6]);
+  context.beginPath(); context.moveTo(x, y0); context.lineTo(x, y1); context.stroke();
+  context.setLineDash([]);
+  context.beginPath();
+  context.moveTo(x - head, y0 + head); context.lineTo(x, y0); context.lineTo(x + head, y0 + head);
+  context.moveTo(x - head, y1 - head); context.lineTo(x, y1); context.lineTo(x + head, y1 - head);
+  context.stroke();
+  context.restore();
 }
 
 /**
- * Étiquette d'une pièce : nom + numéro sur deux lignes si `named`, sinon le
- * numéro seul (la légende sous le menu donne la couleur de chaque pièce).
+ * Plan de découpe : photo du tissu, défauts en rouge, pièces colorées
+ * étiquetées avec leur droit-fil (planScale pixels par cellule).
+ * `highlight` = { index, invalid } : pièce en cours de déplacement (D-58),
+ * dessinée au-dessus des autres, en rouge si sa position est refusée.
  */
-function drawPieceLabel(context, placement, frame, { named, minSize, maxSize }) {
-  let size; const lines = [];
-  if (named) {
-    size = namedLabelSize(context, placement, frame, maxSize);
-    lines.push([pieceLabel(placement.name), 700, size], [`n° ${placement.pass}`, 600, size * 0.85]);
-  } else {
-    size = Math.min(maxSize * 0.75, fitText(context, String(placement.pass), 700, frame.width), frame.height / 1.4);
-    if (size < minSize * 0.7) return;
-    lines.push([String(placement.pass), 700, size]);
-  }
-  context.textAlign = 'center'; context.textBaseline = 'middle'; context.lineJoin = 'round';
-  lines.forEach(([text, weight, lineSize], index) => {
-    const y = frame.cy + (index - (lines.length - 1) / 2) * size * 1.15;
-    context.font = labelFont(lineSize, weight);
-    context.lineWidth = Math.max(2, lineSize / 4); context.strokeStyle = 'rgba(255,255,255,0.85)';
-    context.strokeText(text, frame.cx, y);
-    context.fillStyle = '#1d2420'; context.fillText(text, frame.cx, y);
-  });
-}
-
-/** Plan de découpe : photo du tissu, défauts en rouge, pièces colorées étiquetées (planScale pixels par cellule). */
-export function drawPlan(canvas, { imageCanvas, gridMask, placements, colors }) {
+export function drawPlan(canvas, { imageCanvas, gridMask, placements, colors, highlight = null }) {
   const { width, height } = gridMask;
   const scale = planScale(width);
   canvas.width = width * scale; canvas.height = height * scale;
@@ -121,27 +150,38 @@ export function drawPlan(canvas, { imageCanvas, gridMask, placements, colors }) 
   context.drawImage(layer, 0, 0, canvas.width, canvas.height);
 
   const outlines = placements.map((placement) => placementOutline(placement));
+  const pieceColor = (placement, index) => (highlight?.index === index && highlight.invalid ? '#d63a3a' : colors[placement.name] ?? '#777777');
+  // La pièce déplacée est dessinée en dernier, au-dessus des autres.
+  const order = placements.map((_, index) => index).sort((a, b) => (a === highlight?.index) - (b === highlight?.index));
   // Ombre portée discrète, puis remplissage et contour net de chaque pièce.
-  context.save();
-  context.shadowColor = 'rgba(20,30,25,0.28)'; context.shadowBlur = 3 * scale; context.shadowOffsetY = scale / 2;
-  placements.forEach((placement, index) => {
-    tracePolygon(context, outlines[index], scale);
-    context.fillStyle = `${colors[placement.name] ?? '#777777'}d0`; context.fill();
-  });
-  context.restore();
   context.lineJoin = 'round';
-  placements.forEach((placement, index) => {
+  for (const index of order) {
+    const placement = placements[index]; const lifted = highlight?.index === index;
+    const color = pieceColor(placement, index);
+    context.save();
+    context.shadowColor = lifted ? 'rgba(20,26,60,0.45)' : 'rgba(20,26,60,0.26)'; context.shadowBlur = (lifted ? 7 : 3) * scale; context.shadowOffsetY = (lifted ? 2 : 0.5) * scale;
     tracePolygon(context, outlines[index], scale);
-    context.strokeStyle = 'rgba(255,255,255,0.9)'; context.lineWidth = Math.max(1.5, scale * 0.9); context.stroke();
-    context.strokeStyle = shade(colors[placement.name] ?? '#777777', -0.35); context.lineWidth = Math.max(1, scale * 0.45); context.stroke();
-  });
+    context.fillStyle = `${color}${lifted ? 'f0' : 'd4'}`; context.fill();
+    context.restore();
+    // Reflet « verre » : léger dégradé clair vers le haut de la pièce.
+    const box = polygonBounds(outlines[index]);
+    const sheen = context.createLinearGradient(0, box.minY * scale, 0, box.maxY * scale);
+    sheen.addColorStop(0, 'rgba(255,255,255,0.30)'); sheen.addColorStop(0.5, 'rgba(255,255,255,0.04)'); sheen.addColorStop(1, 'rgba(0,0,30,0.08)');
+    tracePolygon(context, outlines[index], scale);
+    context.fillStyle = sheen; context.fill();
+    context.strokeStyle = 'rgba(255,255,255,0.92)'; context.lineWidth = Math.max(1.5, scale * (lifted ? 1.4 : 0.9)); context.stroke();
+    context.strokeStyle = shade(color, -0.35); context.lineWidth = Math.max(1, scale * 0.45); context.stroke();
+  }
   // Texte lisible à l'écran (≈ 9 px affichés au minimum), quelle que soit la taille d'affichage du canvas.
   const displayWidth = canvas.clientWidth || canvas.parentElement?.clientWidth || 800;
-  const minSize = 9 * canvas.width / displayWidth; const maxSize = minSize * 2;
+  const minSize = 9 * canvas.width / displayWidth; const maxSize = minSize * 3;
   const frames = outlines.map((outline) => labelFrame(outline, scale));
-  // Même style pour toutes les pièces : les noms seulement s'ils tiennent partout.
-  const named = placements.every((placement, index) => namedLabelSize(context, placement, frames[index], maxSize) >= minSize);
-  placements.forEach((placement, index) => drawPieceLabel(context, placement, frames[index], { named, minSize, maxSize }));
+  // Un seul exemplaire : le numéro n'apporte rien, le nom suffit.
+  const numbered = placements.some((placement) => placement.pass > 1);
+  placements.forEach((placement, index) => {
+    drawGrainArrow(context, placement, frames[index], scale);
+    drawPieceLabel(context, placement, frames[index], { numbered, minSize, maxSize });
+  });
 }
 
 /** Assombrit (amount < 0) ou éclaircit une couleur #rrggbb. */

@@ -139,6 +139,17 @@ async function scenario(baseUrl, browser) {
     await evaluate("document.querySelector('#addTool').click()");
   });
 
+  await step('[D-57] Par défaut, le plan place un seul exemplaire', async () => {
+    check(await evaluate("document.querySelector('#kitCount').value === '1' && !document.querySelector('#kitMax').checked"), 'la quantité par défaut n’est pas 1');
+    await evaluate("document.querySelector('#planButton').click()");
+    await waitFor(`${text('#optimizationState')} === 'TERMINÉ'`, { timeout: 90000, message: 'nesting non terminé en 90 s' });
+    check(await evaluate('retissDebug.state.plan.stats.completeKits') === 1, 'le plan ne contient pas exactement un T-shirt');
+    check(await evaluate('retissDebug.state.plan.placements.length') === 5, 'un T-shirt = 5 pièces');
+    // « Le plus possible » invalide le plan et remplit le tissu.
+    await evaluate("(() => { const s = document.querySelector('#kitMax'); s.checked = true; s.dispatchEvent(new Event('change')); })()");
+    check(await evaluate('retissDebug.state.plan === null && retissDebug.state.quantity === "max"'), 'le changement de quantité n’invalide pas le plan');
+  });
+
   await step('[D-01][D-21] Imbrication : plan valide, hors taches, droit-fil respecté', async () => {
     await evaluate("document.querySelector('#planButton').click()");
     await waitFor(`${text('#optimizationState')} === 'TERMINÉ'`, { timeout: 90000, message: 'nesting non terminé en 90 s' });
@@ -160,7 +171,7 @@ async function scenario(baseUrl, browser) {
     check(!report.overlap, 'une pièce recouvre une tache');
     check(!report.outside, 'une pièce dessinée sort du tissu');
     check(report.grain, '[D-21] une pièce ne respecte pas le droit-fil');
-    check(await evaluate("document.querySelector('#orientationMode').value === 'droit-fil'"), '[D-21] le mode par défaut n’est pas le droit-fil');
+    check(await evaluate("document.querySelector('#material').value === 'coton' && !document.querySelector('#orientationMode')"), '[D-56] matière par défaut inattendue, ou ancien menu d’orientation encore présent');
     check(report.kits >= 8, `seulement ${report.kits} T-shirts complets`);
     check(await evaluate("document.querySelector('#resultEmpty').style.display === 'none' && !document.querySelector('#downloadButton').disabled"), 'résultat non affiché ou PDF indisponible');
     check(await evaluate(`[...document.querySelectorAll('#resultStats strong')][0].textContent === String(${report.kits})`), 'statistiques non mises à jour');
@@ -236,7 +247,12 @@ async function scenario(baseUrl, browser) {
       check(Math.abs(back[0] - moved[0]) < 1 && Math.abs(back[1] - moved[1]) < 1, '[D-38] calibrage non retrouvé en revenant à la même taille');
 
       // Plan invalidé dans la fenêtre principale → plus aucun contour projeté.
-      await evaluate("(() => { const s = document.querySelector('#orientationMode'); s.value = 'quarts'; s.dispatchEvent(new Event('change')); s.value = 'droit-fil'; s.dispatchEvent(new Event('change')); })()");
+      // D-55 : les défauts sont projetés par leur contour (polygones), plus par une boîte.
+      check(await evaluate('window.projectionDebug.state.plan.defects.length > 0 && window.projectionDebug.state.plan.defects.every((polygon) => Array.isArray(polygon) && polygon.length >= 3)', projection), '[D-55] défauts non transmis sous forme de contours');
+      // D-60 : découpe guidée, G l'active, Espace coche la pièce en cours.
+      for (const key of ['g', ' ']) { await projection.send('Input.dispatchKeyEvent', { type: 'keyDown', key, text: key }); await projection.send('Input.dispatchKeyEvent', { type: 'keyUp', key }); }
+      check(await evaluate('window.projectionDebug.state.guided && window.projectionDebug.state.cut.size === 1 && window.projectionDebug.state.cursor === 1', projection), '[D-60] découpe guidée : pièce non cochée ou pas de passage à la suivante');
+      await evaluate("(() => { const s = document.querySelector('#material'); s.value = 'velours'; s.dispatchEvent(new Event('change')); s.value = 'coton'; s.dispatchEvent(new Event('change')); })()");
       await waitFor('window.projectionDebug.state.plan === null', { connection: projection, message: 'plan périmé toujours projeté' });
     } finally {
       projection.close();
