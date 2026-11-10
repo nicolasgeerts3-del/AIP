@@ -259,7 +259,7 @@ async function scenario(baseUrl, browser) {
     check(await evaluate(gridAt(0.25, 0.25)) === 1, 'la tache a disparu après le changement de taille');
     await evaluate("document.querySelector('#planButton').click()");
     await waitFor(`${text('#optimizationState')} === 'TERMINÉ'`, { timeout: 90000 });
-    check(await evaluate("document.querySelector('#resultCanvas').width === 300 && document.querySelector('#resultCanvas').height === 450"), 'plan non redimensionné');
+    check(await evaluate("(() => { const c = document.querySelector('#resultCanvas'); const s = Number(c.dataset.scale); return s >= 2 && c.width === 300 * s && c.height === 450 * s; })()"), 'plan non redimensionné');
     if (!(await evaluate('!!window.jspdf'))) return 'SKIP';
     await evaluate("window.__saved = null; document.querySelector('#downloadButton').click()");
     await waitFor('window.__saved !== null', { timeout: 60000, message: 'PDF non généré' });
