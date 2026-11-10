@@ -111,7 +111,10 @@ input[type=range]{width:100%;height:32px;margin:6px 0 2px;accent-color:var(--ora
 .tool-button.active{background:var(--green);color:#fff;border-color:var(--green)}
 
 /* ---------- Étape 3 : plan ---------- */
-.plan-controls{display:grid;grid-template-columns:minmax(200px,280px) auto 1fr;gap:12px;align-items:end}
+.plan-controls{display:grid;grid-template-columns:minmax(200px,260px) minmax(200px,280px) auto 1fr;gap:12px;align-items:end}
+.model-pieces{grid-column:1/-1;display:flex;flex-wrap:wrap;gap:6px 14px;margin:0;padding:0;list-style:none;font:12px 'DM Mono',monospace;color:var(--muted)}
+.model-pieces li{display:flex;align-items:center;gap:6px}
+.model-pieces .swatch{width:10px;height:10px;border-radius:2px}
 .plan-controls .brush-label{flex-direction:column;justify-content:flex-start}
 .plan-button{min-width:240px}
 .result-actions{display:flex;flex-wrap:wrap;gap:8px;justify-content:flex-end}
@@ -155,6 +158,12 @@ footer{border-top:1px solid var(--line);padding:18px 5vw;display:flex;justify-co
 .camera-dialog-step ol,.camera-dialog-step ul{margin:6px 0 0;padding-left:20px;font-size:13px;line-height:1.6}
 .camera-dialog-step summary{cursor:pointer;font-size:13px;font-weight:600;min-height:44px;display:flex;align-items:center}
 .camera-dialog-row{display:grid;grid-template-columns:1fr auto;gap:10px}
+
+/* Écran moyen : les deux menus et le bouton de calcul sur une ligne, l'export en dessous. */
+@media(max-width:1200px){
+  .plan-controls{grid-template-columns:repeat(2,minmax(0,1fr)) auto}
+  .result-actions{grid-column:1/-1;justify-content:flex-start}
+}
 
 /* ---------- Téléphone et tablette ---------- */
 @media(max-width:900px){

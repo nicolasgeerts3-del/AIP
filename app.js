@@ -2,11 +2,13 @@
 // modules de src/. Aucun calcul métier ici : détection, nesting, statistiques
 // et PDF vivent dans src/core et src/export, testés sans navigateur.
 import {
-  APP_VERSION, CELL_CM, CELL_MM, COLORS, DEFAULT_ORIENTATION_MODE, FABRIC, FABRIC_LIMITS, KIT, MAX_IMAGE_WIDTH, MAX_SOURCE_WIDTH, ORIENTATION_MODES, PIECES,
+  APP_VERSION, CELL_CM, CELL_MM, DEFAULT_ORIENTATION_MODE, FABRIC, FABRIC_LIMITS, MAX_IMAGE_WIDTH, MAX_SOURCE_WIDTH, ORIENTATION_MODES,
   SAFE_CLEARANCE_CELLS
 } from './src/config.js';
+import { DEFAULT_MODEL, MODELS } from './src/patterns.js';
 import { computeColorPlanes, detectDefects } from './src/core/detection.js';
 import { fabricWithRatio, formatFabric, gridForFabric, validateFabric } from './src/core/fabric.js';
+import { polygonArea } from './src/core/geometry.js';
 import { cloneMask, combineLayers, countMask, createMask, paintStroke, resampleMaxPool } from './src/core/mask.js';
 import { buildPieceShapes, nestPieces } from './src/core/nesting.js';
 import { orderCorners, quadRatio, rectifiedSize, warpPerspective } from './src/core/perspective.js';
@@ -37,7 +39,8 @@ const ui = {
   step1: $('#step1'), step2: $('#step2'), step3: $('#step3'),
   maskStage: $('.mask-stage'), maskCanvas: $('#maskCanvas'), brushCursor: $('#brushCursor'), editorEmpty: $('#editorEmpty'), maskCount: $('#maskCount'),
   addTool: $('#addTool'), eraseTool: $('#eraseTool'), brushSize: $('#brushSize'), brushValue: $('#brushValue'),
-  undoButton: $('#undoButton'), resetMaskButton: $('#resetMaskButton'), orientationMode: $('#orientationMode'), planButton: $('#planButton'),
+  undoButton: $('#undoButton'), resetMaskButton: $('#resetMaskButton'), patternModel: $('#patternModel'), modelPieces: $('#modelPieces'),
+  orientationMode: $('#orientationMode'), planButton: $('#planButton'),
   progressBar: $('#progressBar'), progressText: $('#progressText'), planAdvice: $('#planAdvice'),
   resultFrame: $('.result-frame'), resultCanvas: $('#resultCanvas'), resultEmpty: $('#resultEmpty'), resultStats: $('#resultStats'),
   optimizationState: $('#optimizationState'), downloadButton: $('#downloadButton'), projectButton: $('#projectButton')
@@ -51,12 +54,20 @@ const SUSPICIOUS_DEFECT_RATIO = 0.1;
 /** Nombre de retouches au pinceau que l'on peut annuler (D-27). */
 const UNDO_LIMIT = 20;
 
-// D-21 : formes rastérisées par mode d'orientation, calculées à la demande.
+// D-21 : formes rastérisées par modèle et mode d'orientation, calculées à la demande.
 const shapesByMode = new Map();
-function getShapes(mode) {
+function getShapes(mode, modelId = state.model) {
   if (!ORIENTATION_MODES[mode]) throw new Error(`Mode d’orientation inconnu : ${mode}`);
-  if (!shapesByMode.has(mode)) shapesByMode.set(mode, buildPieceShapes(PIECES, { cellCm: CELL_CM, angles: ORIENTATION_MODES[mode].angles }));
-  return shapesByMode.get(mode);
+  if (!MODELS[modelId]) throw new Error(`Modèle inconnu : ${modelId}`);
+  const key = `${modelId}/${mode}`;
+  if (!shapesByMode.has(key)) shapesByMode.set(key, buildPieceShapes(MODELS[modelId].pieces, { cellCm: CELL_CM, angles: ORIENTATION_MODES[mode].angles }));
+  return shapesByMode.get(key);
+}
+
+/** Modèle choisi à l'étape 3 : pièces, composition, couleurs et noms (« T-shirt » / « T-shirts »). */
+function currentModel() { return MODELS[state.model]; }
+function countLabel(count, model = currentModel()) {
+  return `${count} ${count > 1 ? model.many : model.one} complet${count > 1 ? 's' : ''}`;
 }
 
 const state = {
@@ -76,6 +87,7 @@ const state = {
   stream: null,
   cameraDeviceId: readStoredCamera(), // D-32 : caméra choisie (téléphone, webcam…), mémorisée sur ce navigateur
   brushMode: 'add',
+  model: DEFAULT_MODEL, // patron à découper (src/patterns.js)
   orientationMode: DEFAULT_ORIENTATION_MODE,
   painting: false,
   history: [],        // D-27 : calques { added, erased } avant chaque retouche, pour « Annuler »
@@ -166,7 +178,7 @@ const projectionChannel = 'BroadcastChannel' in window ? new BroadcastChannel('r
 function publishPlan() {
   if (!projectionChannel) return;
   const message = state.plan
-    ? planForProjection({ placements: state.plan.placements, gridMask: state.plan.gridMask, fabric: state.fabric, cellCm: CELL_CM, colors: COLORS })
+    ? planForProjection({ placements: state.plan.placements, gridMask: state.plan.gridMask, fabric: state.fabric, cellCm: CELL_CM, colors: state.plan.model.colors })
     : { type: 'plan', fabric: state.fabric, pieces: [], defects: [] };
   projectionChannel.postMessage({ ...message, version: APP_VERSION });
 }
@@ -211,13 +223,14 @@ function maskChanged() {
 
 function renderStats() {
   const { gridMask } = state.plan ?? getMasks();
-  const stats = state.plan?.stats ?? computeSurfaceStats({ gridMask, placements: [], cellCm: CELL_CM, kit: KIT });
+  const model = state.plan?.model ?? currentModel();
+  const stats = state.plan?.stats ?? computeSurfaceStats({ gridMask, placements: [], cellCm: CELL_CM, kit: model.kit });
   // [titre, valeur, précision affichée en petit]. D-41 : sans plan, les
   // valeurs qui en dépendent restent vides au lieu d'annoncer « 0 % » ou une
   // chute égale à tout le tissu.
   const planned = (value) => (state.plan ? value : '—');
   const cells = [
-    ['T-SHIRTS COMPLETS', planned(String(stats.completeKits)), state.plan ? `${stats.pieceCount} pièces` : 'calcule le plan (étape 3)'],
+    [`${model.many.toUpperCase()} COMPLETS`, planned(String(stats.completeKits)), state.plan ? `${stats.pieceCount} pièces` : 'calcule le plan (étape 3)'],
     ['TISSU SAIN UTILISÉ', planned(`${decimalFormat.format(stats.usageRatio * 100)} %`), 'part du tissu sans défaut'],
     ['SURFACE DÉCOUPÉE', planned(formatArea(stats.usedCm2)), 'surface des patrons'],
     ['CHUTE', planned(formatArea(stats.lostCm2)), 'tissu sain non utilisé'],
@@ -535,6 +548,7 @@ async function runNesting() {
   if (state.nesting || !state.image) return;
   const version = state.inputVersion;
   const { gridMask } = getMasks();
+  const model = currentModel();
   const shapes = getShapes(state.orientationMode);
   state.nesting = true;
   ui.planButton.disabled = true; ui.optimizationState.textContent = 'CALCUL…'; ui.planAdvice.hidden = true;
@@ -542,14 +556,14 @@ async function runNesting() {
   setStatus('Calcul du plan de découpe… (quelques secondes)');
   try {
     const result = await nestPieces({
-      gridMask, shapes, clearance: SAFE_CLEARANCE_CELLS, kit: KIT,
+      gridMask, shapes, clearance: SAFE_CLEARANCE_CELLS, kit: model.kit,
       onProgress: (fraction) => setProgress(fraction * 100, `Calcul du plan · ${Math.round(fraction * 100)} %`),
       shouldAbort: () => state.inputVersion !== version // D-08 : résultat périmé si une entrée a changé
     });
     if (result.aborted) {
       setProgress(0, 'Calcul interrompu');
       ui.optimizationState.textContent = 'À RECALCULER';
-      setStatus('Taches, tissu ou orientation modifiés pendant le calcul : relance le calcul du plan');
+      setStatus('Taches, tissu, modèle ou orientation modifiés pendant le calcul : relance le calcul du plan');
       return;
     }
     if (!result.validation.ok) {
@@ -559,8 +573,8 @@ async function runNesting() {
       return;
     }
     const { placements } = result;
-    state.plan = { placements, gridMask, stats: computeSurfaceStats({ gridMask, placements, cellCm: CELL_CM, kit: KIT }) };
-    drawPlan(ui.resultCanvas, { imageCanvas: ui.captureCanvas, gridMask, placements, colors: COLORS });
+    state.plan = { placements, gridMask, model, stats: computeSurfaceStats({ gridMask, placements, cellCm: CELL_CM, kit: model.kit }) };
+    drawPlan(ui.resultCanvas, { imageCanvas: ui.captureCanvas, gridMask, placements, colors: model.colors });
     ui.resultEmpty.style.display = 'none';
     ui.resultFrame.classList.add('has-plan');
     renderStats();
@@ -569,8 +583,8 @@ async function runNesting() {
     const kits = state.plan.stats.completeKits;
     showPlanAdvice(kits);
     setStatus(kits
-      ? `${kits} T-shirt${kits > 1 ? 's' : ''} complet${kits > 1 ? 's' : ''} (${placements.length} pièces placées). Projette le plan sur le tissu ou télécharge le PDF 1:1.`
-      : 'Aucun T-shirt complet ne tient sur le tissu : lis l’explication à l’étape 3.');
+      ? `${countLabel(kits, model)} (${placements.length} pièces placées). Projette le plan sur le tissu ou télécharge le PDF 1:1.`
+      : `Aucun ${model.one} complet ne tient sur le tissu : lis l’explication à l’étape 3.`);
     publishPlan();
     setProgress(100, 'Plan calculé');
     // D-47 : le résultat s'affiche à l'écran, sans avoir à le chercher.
@@ -582,18 +596,26 @@ async function runNesting() {
   }
 }
 
-/** D-48 : un plan sans T-shirt est expliqué, avec un bouton qui mène à la correction. */
+/** Ordre de grandeur du tissu demandé par un exemplaire du modèle, pour l'explication D-48. */
+function modelSizeHint(model) {
+  if (model.sizeHint) return model.sizeHint;
+  const area = Object.entries(model.kit).reduce((sum, [name, count]) => sum + count * polygonArea(model.pieces[name]), 0);
+  return `un ${model.one} demande au moins ${formatArea(area)} de tissu sain`;
+}
+
+/** D-48 : un plan sans exemplaire complet est expliqué, avec un bouton qui mène à la correction. */
 function showPlanAdvice(kits) {
   ui.planAdvice.hidden = kits > 0;
   if (kits > 0) return;
+  const model = currentModel();
   const [text, button] = [ui.planAdvice.querySelector('p'), ui.planAdvice.querySelector('button')];
   const ratio = defectRatio();
   if (ratio > SUSPICIOUS_DEFECT_RATIO / 2) {
-    text.textContent = `Aucun T-shirt complet ne tient : ${integerFormat.format(ratio * 100)} % du tissu est marqué comme taché, en petites zones dispersées. Si ce sont des plis ou des reflets, rends la détection moins sensible ou efface ces zones au pinceau.`;
+    text.textContent = `Aucun ${model.one} complet ne tient : ${integerFormat.format(ratio * 100)} % du tissu est marqué comme taché, en petites zones dispersées. Si ce sont des plis ou des reflets, rends la détection moins sensible ou efface ces zones au pinceau.`;
     button.textContent = 'Ajuster la détection (étape 2)';
     button.onclick = () => goToStep(ui.step2, ui.sensitivity);
   } else {
-    text.textContent = `Aucun T-shirt complet ne tient sur ${formatFabric(state.fabric)}. Vérifie la taille réelle du tissu : un T-shirt demande environ 1,1 m × 0,8 m.`;
+    text.textContent = `Aucun ${model.one} complet ne tient sur ${formatFabric(state.fabric)}. Vérifie la taille réelle du tissu : ${modelSizeHint(model)}.`;
     button.textContent = 'Vérifier la taille du tissu (étape 1)';
     button.onclick = () => goToStep(ui.step1, ui.fabricWidth);
   }
@@ -625,7 +647,7 @@ async function exportPdf() {
   try {
     const pdf = buildCutPlanPdf(JsPdf, {
       placements: state.plan.placements, overviewPng: ui.resultCanvas.toDataURL('image/png'),
-      completeKits: state.plan.stats.completeKits, fabric: state.fabric, cellMm: CELL_MM, colors: COLORS
+      completeKits: state.plan.stats.completeKits, kitLabel: state.plan.model.many, fabric: state.fabric, cellMm: CELL_MM, colors: state.plan.model.colors
     });
     pdf.save('retiss-plan-1-1.pdf');
     setStatus(`PDF généré (${pdf.getNumberOfPages()} pages)`);
@@ -808,6 +830,28 @@ document.addEventListener('keydown', guard((event) => {
 
 ui.steps.forEach((button) => button.addEventListener('click', () => goToStep(document.getElementById(button.dataset.target))));
 new ResizeObserver(syncHeaderHeight).observe(ui.topbar);
+
+/** Liste des pièces du modèle sous le menu : nom × quantité, avec la couleur du plan. */
+function renderModelPieces() {
+  const model = currentModel();
+  ui.modelPieces.replaceChildren(...Object.entries(model.kit).map(([name, count]) => {
+    const item = document.createElement('li');
+    const swatch = document.createElement('span'); swatch.className = 'swatch'; swatch.style.background = model.colors[name];
+    item.append(swatch, `${name.toLowerCase()} × ${count}`);
+    return item;
+  }));
+}
+
+ui.patternModel.replaceChildren(...Object.entries(MODELS).map(([value, { label }]) => new Option(label, value, false, value === state.model)));
+ui.patternModel.addEventListener('change', () => {
+  state.model = ui.patternModel.value;
+  // Un plan calculé pour un autre modèle n'est plus valable.
+  state.inputVersion += 1;
+  invalidatePlan();
+  renderModelPieces();
+  setStatus(`Modèle : ${currentModel().label}. Calcule le plan de découpe.`);
+});
+renderModelPieces();
 
 ui.orientationMode.replaceChildren(...Object.entries(ORIENTATION_MODES).map(([value, { label }]) => new Option(label, value, false, value === state.orientationMode)));
 ui.orientationMode.addEventListener('change', () => {

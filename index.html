@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="fr" data-app-version="2026-10-28.1">
+<html lang="fr" data-app-version="2026-11-10.1">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -24,7 +24,7 @@
   <main id="top">
     <section class="intro">
       <h1>Plan de découpe sans les taches</h1>
-      <p class="intro-copy">Photographie le tissu, vérifie les taches repérées, puis obtiens un plan de découpe de T-shirts qui les évite, sur <span id="fabricIntro">3,00 m × 4,50 m</span>.</p>
+      <p class="intro-copy">Photographie le tissu, vérifie les taches repérées, puis obtiens un plan de découpe qui les évite (T-shirt, portefeuille, sac banane…), sur <span id="fabricIntro">3,00 m × 4,50 m</span>.</p>
     </section>
 
     <section class="panel step-panel" id="step1" aria-labelledby="step1Title">
@@ -79,13 +79,15 @@
     <section class="panel step-panel result" id="step3" aria-labelledby="step3Title">
       <div class="panel-head"><div><span class="eyebrow">Étape 3</span><h2 id="step3Title">Plan de découpe</h2></div><span class="optimization-state" id="optimizationState">EN ATTENTE</span></div>
       <div class="plan-controls">
+        <label class="brush-label" for="patternModel">Modèle à découper<select class="select-input" id="patternModel"></select></label>
         <label class="brush-label" for="orientationMode">Orientation des pièces<select class="select-input" id="orientationMode"></select></label>
         <button class="button plan-button" id="planButton" type="button" disabled>✦ Calculer le plan de découpe</button>
         <div class="result-actions"><button class="button" id="projectButton" type="button" title="Afficher les contours sur le tissu avec un vidéoprojecteur">▶ Projeter sur le tissu</button><button class="button" id="downloadButton" type="button" disabled title="Plan à l’échelle 1:1, à imprimer">↓ PDF 1:1</button></div>
+        <ul class="model-pieces" id="modelPieces" aria-label="Pièces d’un exemplaire du modèle"></ul>
       </div>
       <div class="progress-wrap"><div class="progress-bar"><span id="progressBar"></span></div><small id="progressText">Plan pas encore calculé</small></div>
       <div class="plan-advice" id="planAdvice" hidden><p></p><button class="button" type="button"></button></div>
-      <div class="result-frame"><canvas id="resultCanvas"></canvas><div class="result-empty" id="resultEmpty"><span aria-hidden="true">✣</span><p>Le plan apparaîtra ici</p><small>Les pièces des T-shirts seront placées en évitant les taches.</small></div></div>
+      <div class="result-frame"><canvas id="resultCanvas"></canvas><div class="result-empty" id="resultEmpty"><span aria-hidden="true">✣</span><p>Le plan apparaîtra ici</p><small>Les pièces du modèle choisi seront placées en évitant les taches.</small></div></div>
       <div class="result-stats" id="resultStats"></div>
     </section>
   </main>

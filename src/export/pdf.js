@@ -53,14 +53,14 @@ function drawClosedPolygon(pdf, polygon) {
  * Construit le document. `JsPdf` est le constructeur jsPDF (injecté pour
  * pouvoir tester sans navigateur). Renvoie l'instance, prête pour .save().
  */
-export function buildCutPlanPdf(JsPdf, { placements, overviewPng, completeKits, fabric, cellMm, colors, margin = 10 }) {
+export function buildCutPlanPdf(JsPdf, { placements, overviewPng, completeKits, kitLabel = 'T-shirts', fabric, cellMm, colors, margin = 10 }) {
   if (typeof JsPdf !== 'function') throw new TypeError('Bibliothèque jsPDF indisponible');
   if (!placements.length) throw new RangeError('Aucune pièce à exporter');
   const fabricWidthMm = fabric.widthCm * 10; const fabricHeightMm = fabric.heightCm * 10;
   const pdf = new JsPdf({ orientation: 'portrait', unit: 'mm', format: 'a4' });
 
   pdf.setFontSize(16); pdf.text('ReTiss — plan de découpe 1:1', 15, 18);
-  pdf.setFontSize(10); pdf.text(`${completeKits} T-shirts complets · ${placements.length} pièces · tissu ${formatFabric(fabric)}`, 15, 26);
+  pdf.setFontSize(10); pdf.text(`${completeKits} ${kitLabel} complets ·${placements.length} pièces · tissu ${formatFabric(fabric)}`, 15, 26);
   if (overviewPng) {
     const box = overviewBox(fabric);
     pdf.addImage(overviewPng, 'PNG', box.x, box.y, box.width, box.height);
