@@ -134,7 +134,8 @@ function growInto(mask, candidates) {
  */
 export function detectOnPlainFabric(planes, {
   madFactor = DEFAULT_MAD_FACTOR, sampleStep = 4, minMad = 0.5,
-  useLuminance = true, localWindowFraction = 0.1, minLuminanceDelta = 4, minChromaDelta = 4, minGroupSize
+  useLuminance = true, useLocalChroma = true, localWindowFraction = 0.1, minLuminanceDelta = 4, minChromaDelta = 4,
+  minLocalChromaDelta = 0.6 * minChromaDelta, minGroupSize
 } = {}) {
   if (!Number.isFinite(madFactor) || madFactor <= 0) throw new RangeError(`Facteur MAD invalide : ${madFactor}`);
   if (!Number.isInteger(sampleStep) || sampleStep < 1) throw new RangeError(`Pas d’échantillonnage invalide : ${sampleStep}`);
@@ -188,6 +189,42 @@ export function detectOnPlainFabric(planes, {
     }
   }
 
+  // 3. Teinte locale (D-63) : écart de teinte à la teinte moyenne du voisinage,
+  // mesuré sur une image lissée. Repère les taches pâles (terre, thé) dont la
+  // couleur est trop proche de celle du tissu pour le test 1, mais qui se
+  // détachent de leur entourage ; le lissage efface le grain et les blocs JPEG.
+  // Une ombre, un pli ou une couture changent la luminosité, presque pas la
+  // teinte : ce test ne les voit pas.
+  let localChromaThreshold = Infinity;
+  if (useLocalChroma) {
+    const radius = Math.max(2, Math.round(Math.min(width, height) * localWindowFraction));
+    const smoothRadius = Math.max(1, Math.round(Math.min(width, height) / 160));
+    const smoothA = boxMean(a, width, height, smoothRadius); const smoothB = boxMean(b, width, height, smoothRadius);
+    const plainA = boxMean(smoothA, width, height, radius); const plainB = boxMean(smoothB, width, height, radius);
+    let excluded = raw.data.slice();
+    let hits = new Uint8Array(raw.data.length);
+    let backgroundA = plainA; let backgroundB = plainB;
+    const gapAt = (index) => Math.hypot(smoothA[index] - backgroundA[index], smoothB[index] - backgroundB[index]);
+    for (let pass = 0; pass < 2; pass += 1) {
+      if (pass > 0) {
+        backgroundA = maskedBoxMean(smoothA, excluded, width, height, radius, plainA);
+        backgroundB = maskedBoxMean(smoothB, excluded, width, height, radius, plainB);
+      }
+      const sigma = Math.max(minMad / 2, median(sampledIndexes.filter((index) => !excluded[index]).map(gapAt)) / 1.177);
+      localChromaThreshold = Math.max(minLocalChromaDelta * floorScale, madFactor * sigma);
+      hits = new Uint8Array(raw.data.length);
+      for (let pixel = 0; pixel < raw.data.length; pixel += 1) {
+        const gap = gapAt(pixel);
+        if (gap > localChromaThreshold) hits[pixel] = gap > STRONG_FACTOR * localChromaThreshold ? 2 : 1;
+      }
+      excluded = raw.data.map((value, index) => (value || hits[index] ? 1 : 0));
+    }
+    for (let pixel = 0; pixel < raw.data.length; pixel += 1) {
+      if (hits[pixel]) { raw.data[pixel] = 1; if (hits[pixel] === 2) strong[pixel] = 1; }
+      if (gapAt(pixel) > FAINT_FACTOR * localChromaThreshold) faint[pixel] = 1;
+    }
+  }
+
   // Hystérésis (D-54) : les pixels détectés sont regroupés (dilatation d'un
   // pixel, qui relie aussi les traits en diagonale et sert de marge de
   // sécurité) ; un groupe est gardé s'il est assez grand ou contient un pixel
@@ -204,7 +241,7 @@ export function detectOnPlainFabric(planes, {
   const groupSize = minGroupSize ?? Math.max(16, Math.round(width * height / 9000));
   const kept = filterComponents(dilate(raw, 1), (cells) => cells.length >= groupSize || cells.some((cell) => strong[cell]));
   const mask = fillHoles(growInto(kept, faint), looksLikeStain);
-  return { mask, threshold: chroma.threshold, luminanceThreshold, luminanceSigma, center, mad: chroma.mad };
+  return { mask, threshold: chroma.threshold, luminanceThreshold, localChromaThreshold, luminanceSigma, center, mad: chroma.mad };
 }
 
 // ---------- Tissus à motif (D-61) ----------
@@ -226,11 +263,15 @@ const LOCAL_SPREAD = 0.3;
  * l'écart minimal avec le motif), tilesAcross (dalles sur la largeur),
  * minGroupSize (plus petit groupe de pixels gardé).
  */
-export function detectOnPattern(planes, { madFactor = DEFAULT_MAD_FACTOR, tilesAcross = 8, minGroupSize, colorStep = 5 } = {}) {
+export function detectOnPattern(planes, { madFactor = DEFAULT_MAD_FACTOR, tilesAcross = 8, minGroupSize, colorStep = 5, lightnessStep = colorStep, smooth = 0, grow = 0 } = {}) {
   if (!Number.isFinite(madFactor) || madFactor <= 0) throw new RangeError(`Facteur MAD invalide : ${madFactor}`);
-  const { width, height, L, a, b } = planes;
+  const { width, height } = planes;
   const count = width * height;
-  const binSize = Math.min(12, Math.max(3, colorStep * madFactor / DEFAULT_MAD_FACTOR));
+  // `smooth` : rayon de lissage des couleurs avant comparaison (efface le grain et les blocs JPEG).
+  const [L, a, b] = [planes.L, planes.a, planes.b].map((plane) => (smooth > 0 ? boxMean(plane, width, height, smooth) : plane));
+  const binSize = Math.min(12, Math.max(1.5, colorStep * madFactor / DEFAULT_MAD_FACTOR));
+  // `lightnessStep` : finesse sur la luminosité (Infinity : la luminosité est ignorée).
+  const lightBin = lightnessStep * madFactor / DEFAULT_MAD_FACTOR;
   const tilesX = Math.max(2, Math.min(tilesAcross, Math.floor(width / 24)));
   const tilesY = Math.max(2, Math.min(tilesAcross, Math.round(tilesX * height / width), Math.floor(height / 24)));
   const tileCount = tilesX * tilesY;
@@ -242,6 +283,9 @@ export function detectOnPattern(planes, { madFactor = DEFAULT_MAD_FACTOR, tilesA
   // Une couleur compte dans une dalle à partir de quelques pixels (pas un pixel de bruit isolé).
   const minPerTile = Math.max(2, Math.round(count / tileCount / 2500));
   const localTiles = Math.max(1, Math.floor(tileCount * LOCAL_SPREAD));
+  // `grow` > 1 : une tache retenue s'étend aux couleurs voisines un peu moins rares (bords pâles).
+  const nearTiles = Math.floor(localTiles * grow);
+  let near = null;
 
   // L'éclairage est aplani (L* moins sa moyenne locale) pour qu'un dégradé de
   // lumière ne fasse pas passer un coin sombre pour une couleur « locale ».
@@ -252,14 +296,14 @@ export function detectOnPattern(planes, { madFactor = DEFAULT_MAD_FACTOR, tilesA
   const sampled = [];
   for (let pixel = 0; pixel < count; pixel += 11) sampled.push(L[pixel]);
   const level = median(sampled);
-  const stride = 64; // cases par axe, largement au-dessus de 256 / 3
+  const stride = 256; // cases par axe, au-dessus de 256 / 1,5
   let raw = createMask(width, height);
   for (let pass = 0; pass < 2; pass += 1) {
     const background = pass === 0 ? plain : maskedBoxMean(L, raw.data, width, height, radius, plain);
     const binOf = new Int32Array(count);
     const tiles = new Map(); // case de couleur → nombre de pixels par dalle
     for (let pixel = 0; pixel < count; pixel += 1) {
-      const lq = Math.max(0, Math.min(stride - 1, Math.floor((L[pixel] - background[pixel] + level + 20) / binSize)));
+      const lq = Number.isFinite(lightBin) ? Math.max(0, Math.min(stride - 1, Math.floor((L[pixel] - background[pixel] + level + 20) / lightBin))) : 0;
       const aq = Math.max(0, Math.min(stride - 1, Math.floor((a[pixel] + 128) / binSize)));
       const bq = Math.max(0, Math.min(stride - 1, Math.floor((b[pixel] + 128) / binSize)));
       const bin = (lq * stride + aq) * stride + bq;
@@ -273,16 +317,19 @@ export function detectOnPattern(planes, { madFactor = DEFAULT_MAD_FACTOR, tilesA
     const local = new Map();
     for (const bin of tiles.keys()) {
       let spread = 0;
-      for (let tile = 0; tile < tileCount && spread <= localTiles; tile += 1) {
+      for (let tile = 0; tile < tileCount && spread <= Math.max(localTiles, nearTiles); tile += 1) {
         for (const offset of neighbours) {
           const counts = tiles.get(bin + offset);
           if (counts && counts[tile] >= minPerTile) { spread += 1; break; }
         }
       }
-      local.set(bin, spread <= localTiles);
+      local.set(bin, spread <= localTiles ? 2 : spread <= nearTiles ? 1 : 0);
     }
-    raw = createMask(width, height);
-    for (let pixel = 0; pixel < count; pixel += 1) if (local.get(binOf[pixel])) raw.data[pixel] = 1;
+    raw = createMask(width, height); near = new Uint8Array(count);
+    for (let pixel = 0; pixel < count; pixel += 1) {
+      const level = local.get(binOf[pixel]);
+      if (level === 2) raw.data[pixel] = 1; else if (level === 1) near[pixel] = 1;
+    }
   }
 
   // Nettoyage : fermeture (une tache traversée par le motif reste d'un seul
@@ -290,6 +337,7 @@ export function detectOnPattern(planes, { madFactor = DEFAULT_MAD_FACTOR, tilesA
   const groupSize = minGroupSize ?? Math.max(24, Math.round(count / 6000));
   const closed = erode(dilate(raw, 2), 1);
   const kept = filterComponents(closed, (cells) => cells.length >= groupSize);
+  if (nearTiles > localTiles) growInto(kept, near);
   const mask = fillHoles(kept, (cells) => cells.length < count / 50);
   return { mask, binSize };
 }
@@ -312,19 +360,50 @@ function isEverywhere(mask, tilesAcross = 6) {
 /** Au-delà de cet écart-type (en unités L*a*b*), le « bruit » du tissu est un motif. */
 const PATTERN_SIGMA = 7;
 
+/** Écart de teinte (L*a*b*) au-delà duquel deux zones sont de couleurs franchement différentes. */
+const DISTINCT_HUE = 15;
+
+/** Le tissu a-t-il plusieurs couleurs réparties partout (motif), et pas seulement une tache colorée ? */
+function hasSeveralColours(planes, plainResult) {
+  if (plainResult.mad > PATTERN_SIGMA) return true;
+  const { width, height, a, b } = planes; const { center } = plainResult;
+  const distinct = createMask(width, height);
+  for (let pixel = 0; pixel < distinct.data.length; pixel += 1) {
+    if (Math.hypot(a[pixel] - center.a, b[pixel] - center.b) > DISTINCT_HUE) distinct.data[pixel] = 1;
+  }
+  return isEverywhere(distinct);
+}
+
 /**
- * Détection des défauts. `pattern` choisit la méthode :
- *  - false : tissu uni (detectOnPlainFabric) ;
- *  - true : tissu à motif (detectOnPattern) ;
- *  - 'auto' (défaut) : uni d'abord ; si le tissu varie fortement ou si le
- *    résultat marque des zones partout, c'est un motif et on bascule.
- * Renvoie le résultat de la méthode retenue, plus { patterned }.
+ * Tissu d'une seule couleur mais à la luminosité irrégulière (plis, coutures,
+ * jean délavé, armure marquée) : même principe que detectOnPattern, mais sur
+ * la teinte seule, lissée (D-63). Une ombre, un pli ou une couture changent la
+ * luminosité, presque pas la teinte ; une tache, presque toujours la teinte.
+ */
+export function detectOnCreasedFabric(planes, options = {}) {
+  const smooth = Math.max(1, Math.round(Math.min(planes.width, planes.height) / 160));
+  return detectOnPattern(planes, { colorStep: 2.5, lightnessStep: Infinity, smooth, grow: 1.6, ...options });
+}
+
+/**
+ * Détection des défauts. Trois méthodes, selon le tissu :
+ *  - 'uni' : tissu uni et propre → teinte + luminosité (detectOnPlainFabric) ;
+ *  - 'teinte' : une seule couleur, mais luminosité irrégulière →
+ *    detectOnCreasedFabric ;
+ *  - 'motif' : plusieurs couleurs (rayures, carreaux, pois, fleurs) →
+ *    detectOnPattern.
+ * `pattern` : false force 'uni' ; true écarte 'uni' ; 'auto' (défaut) choisit
+ * 'uni' tant que le tissu varie peu et que le résultat ne marque pas des zones
+ * partout.
+ * Renvoie le résultat de la méthode retenue, plus { method, patterned }.
  */
 export function detectDefects(planes, { pattern = 'auto', ...options } = {}) {
-  if (pattern === true) return { ...detectOnPattern(planes, options), patterned: true };
   const plainResult = detectOnPlainFabric(planes, options);
-  if (pattern === false) return { ...plainResult, patterned: false };
+  if (pattern === false) return { ...plainResult, method: 'uni', patterned: false };
   const strongVariation = plainResult.mad > PATTERN_SIGMA || plainResult.luminanceSigma > PATTERN_SIGMA;
-  if (!strongVariation && !isEverywhere(plainResult.mask)) return { ...plainResult, patterned: false };
-  return { ...plainResult, ...detectOnPattern(planes, options), patterned: true };
+  if (pattern === 'auto' && !strongVariation && !isEverywhere(plainResult.mask)) return { ...plainResult, method: 'uni', patterned: false };
+  const { madFactor, minGroupSize } = options;
+  const shared = { ...(madFactor === undefined ? {} : { madFactor }), ...(minGroupSize === undefined ? {} : { minGroupSize }) };
+  if (hasSeveralColours(planes, plainResult)) return { ...plainResult, ...detectOnPattern(planes, shared), method: 'motif', patterned: true };
+  return { ...plainResult, ...detectOnCreasedFabric(planes, shared), method: 'teinte', patterned: true };
 }

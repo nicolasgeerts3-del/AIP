@@ -98,3 +98,52 @@ describe('[D-62] photos de test proposées dans le site', () => {
     assert.ok(!readFileSync(new URL('../.vercelignore', import.meta.url), 'utf8').includes(SAMPLE_FOLDER));
   });
 });
+
+describe('[D-63] tissu d’une seule couleur, froissé ou délavé', () => {
+  // Jean bleu : plis (bandes d'ombre), couture sombre, centre délavé. Tache de terre pâle, brunâtre.
+  const SEAM_X = 70;
+  function creasedImage({ stained = true } = {}) {
+    const random = seededRandom(4);
+    const data = new Uint8ClampedArray(WIDTH * HEIGHT * 4);
+    for (let y = 0; y < HEIGHT; y += 1) {
+      for (let x = 0; x < WIDTH; x += 1) {
+        // Plis : ondulation douce + arêtes sombres et fines tous les 40 px, en biais.
+        const crease = Math.abs(((x + 0.6 * y) % 40) - 20) < 2 ? 0.72 : 1;
+        const fold = (1 + 0.12 * Math.sin((x + y * 0.6) / 17) + 0.08 * Math.sin((x - y) / 41)) * crease;
+        const fade = 1 + 0.12 * Math.exp(-(((x - 170) / 90) ** 2));
+        const seam = Math.abs(x - SEAM_X) < 3 ? 0.6 : 1;
+        let color = [108, 132, 170];
+        if (stained && (x - STAIN.cx) ** 2 + (y - STAIN.cy) ** 2 <= STAIN.r ** 2) color = [124, 128, 128]; // terre : plus brun, même clarté
+        const light = fold * fade * seam; const jitter = (random() - 0.5) * 10; const out = (y * WIDTH + x) * 4;
+        data[out] = (color[0] + jitter) * light; data[out + 1] = (color[1] + jitter) * light; data[out + 2] = (color[2] + jitter) * light; data[out + 3] = 255;
+      }
+    }
+    return { width: WIDTH, height: HEIGHT, data };
+  }
+  const seamMarked = (mask) => { let n = 0; for (let y = 0; y < HEIGHT; y += 1) if (Math.hypot(SEAM_X - STAIN.cx, y - STAIN.cy) > STAIN.r + 8 && mask.data[y * WIDTH + SEAM_X]) n += 1; return n / HEIGHT; };
+
+  it('la méthode « teinte » est choisie : la tache pâle est trouvée, plis et couture sont ignorés', () => {
+    const result = detectDefects(computeColorPlanes(creasedImage()));
+    assert.equal(result.method, 'teinte');
+    const { coverage, stray } = score(result.mask, 8);
+    assert.ok(coverage > 0.85, `tache couverte à ${(coverage * 100).toFixed(0)} %`);
+    assert.ok(stray < 0.01, `${(stray * 100).toFixed(1)} % du tissu sain marqué`);
+    assert.ok(seamMarked(result.mask) < 0.05, 'la couture est prise pour une tache');
+  });
+
+  it('la méthode « tissu uni » se trompe sur la même photo (plis et couture marqués)', () => {
+    const result = detectDefects(computeColorPlanes(creasedImage()), { pattern: false });
+    assert.equal(result.method, 'uni');
+    assert.ok(score(result.mask, 8).stray > 0.05 || seamMarked(result.mask) > 0.5, 'la méthode uni devrait marquer plis ou couture');
+  });
+
+  it('sans tache, presque rien n’est marqué', () => {
+    const { mask } = detectDefects(computeColorPlanes(creasedImage({ stained: false })));
+    assert.ok(countMask(mask) / mask.data.length < 0.01, `${countMask(mask)} pixels marqués`);
+  });
+
+  it('un tissu à pois reste traité comme un motif, pas comme un tissu froissé', () => {
+    assert.equal(detectDefects(computeColorPlanes(patternedImage(PATTERNS.pois, { tint: COFFEE }))).method, 'motif');
+    assert.equal(detectDefects(computeColorPlanes(fabricImage(160, 120))).method, 'uni');
+  });
+});

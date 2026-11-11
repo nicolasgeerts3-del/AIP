@@ -498,14 +498,16 @@ function runAnalysis() {
   if (!state.image) return;
   const { texture } = currentMaterial();
   // D-56 : le grain naturel d'une matière texturée relève les écarts minimaux.
-  const { mask, patterned } = detectDefects(state.image.planes, {
+  const { mask, patterned, method } = detectDefects(state.image.planes, {
     madFactor: Number(ui.sensitivity.value), minLuminanceDelta: 4 * texture, minChromaDelta: 4 * texture, pattern: state.patternMode
   });
   // D-61 : le type de tissu reconnu à la première analyse est gardé ensuite,
   // pour que le curseur de sensibilité ne fasse pas changer de méthode.
   state.patternMode = patterned;
   ui.patternSwitch.checked = patterned;
-  ui.patternHint.textContent = state.patternChosen ? 'réglé à la main' : patterned ? 'motif ou plis reconnus sur la photo' : 'tissu uni reconnu sur la photo';
+  // 'teinte' : une seule couleur mais des plis, coutures ou un délavage → seule la teinte est comparée (D-63).
+  const methodHint = { uni: 'tissu uni', teinte: 'plis ou délavage : seule la teinte compte', motif: 'motif à plusieurs couleurs' }[method];
+  ui.patternHint.textContent = `${methodHint} (${state.patternChosen ? 'réglé à la main' : 'reconnu sur la photo'})`;
   state.autoMask = mask; state.analyzed = true;
   maskChanged();
   ui.analysisPill.textContent = 'ANALYSÉ';
@@ -845,7 +847,6 @@ ui.sensitivity.addEventListener('input', () => {
 // D-61 : « Tissu à motif » choisit la méthode de détection (reconnue toute seule, modifiable à la main).
 ui.patternSwitch.addEventListener('change', guard(() => {
   state.patternMode = ui.patternSwitch.checked; state.patternChosen = true;
-  ui.patternHint.textContent = 'réglé à la main';
   if (state.image) runAnalysis();
   setStatus(state.patternMode ? 'Tissu à motif : seules les couleurs qui n’apparaissent qu’à un endroit sont marquées.' : 'Tissu uni : tout ce qui diffère de la couleur du tissu est marqué.');
 }));
