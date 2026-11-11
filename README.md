@@ -23,7 +23,8 @@ Prototype web pour analyser les taches sur un tissu, placer des patrons en évit
 - `projection.html`, `projection.css` — fenêtre plein écran affichée sur le projecteur.
   - `src/core/projection.js` — calibrage 4 coins et données envoyées au projecteur.
 - `tests/` — tests unitaires (`*.test.js`), test de bout en bout (`e2e.js`) et campagne d’ergonomie (`usability.js`) ; `helpers/browser.js` pilote Chrome/Edge.
-- `phot tache/` — image de test ; `phot tache/motifs/` : 8 tissus de synthèse à motif (rayures, vichy, tartan, pois, jean, fleuri, chevrons, lin), chacun avec une tache, pour essayer la détection.
+- `phot tache/` — image utilisée par les tests automatiques.
+- `photos-test/` — photos de test proposées dans le site sous « Importer une photo » (liste : `SAMPLE_PHOTOS` dans `src/config.js`) : 8 tissus de synthèse à motif avec une tache, et 2 vraies photos (coton froissé, jean taché).
 - `outils/` — classeurs de comparaison du projet.
 
 Flux des données : photo → recadrage (`warpPerspective`) → `computeColorPlanes` → `detectDefects` (masque image) → retouches au pinceau (`combineLayers`) → `resampleMaxPool` (grille du tissu, 1 cellule = 5 mm) → `nestPieces` → `validatePlan` → affichage / `buildCutPlanPdf`.

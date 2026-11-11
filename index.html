@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="fr" data-app-version="2026-11-12.2">
+<html lang="fr" data-app-version="2026-11-12.3">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -41,6 +41,11 @@
             <label class="button" id="importButton" for="fileInput" tabindex="0" role="button">↥ Importer une photo<input id="fileInput" type="file" accept="image/*" hidden></label>
             <button class="button" id="cameraButton" type="button">◉ Caméra de l’ordinateur</button>
             <button class="button" id="externalCameraButton" type="button">📱 Téléphone ou autre caméra</button>
+          </div>
+          <div class="samples">
+            <h3 id="samplesTitle">Photos de test</h3>
+            <p class="tool-help">Pas de tissu sous la main ? Clique sur une photo pour l’essayer.</p>
+            <div class="sample-grid" id="sampleGrid" role="group" aria-labelledby="samplesTitle"></div>
           </div>
           <div class="capture-actions" aria-label="Actions sur l’image">
             <button class="button" id="captureButton" type="button" disabled hidden>◌ Figer l’image</button>

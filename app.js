@@ -3,7 +3,7 @@
 // et PDF vivent dans src/core et src/export, testés sans navigateur.
 import {
   APP_VERSION, CELL_CM, CELL_MM, DEFAULT_MATERIAL, DEFAULT_QUANTITY, FABRIC, FABRIC_LIMITS, MATERIALS, MAX_IMAGE_WIDTH, MAX_QUANTITY, MAX_SOURCE_WIDTH,
-  materialAngles
+  SAMPLE_FOLDER, SAMPLE_PHOTOS, materialAngles
 } from './src/config.js';
 import { DEFAULT_MODEL, MODELS } from './src/patterns.js';
 import { computeColorPlanes, detectDefects } from './src/core/detection.js';
@@ -31,7 +31,7 @@ const ui = {
   cameraButton: $('#cameraButton'), captureButton: $('#captureButton'), externalCameraButton: $('#externalCameraButton'),
   cameraDialog: $('#cameraDialog'), cameraSelect: $('#cameraSelect'), refreshCamerasButton: $('#refreshCamerasButton'),
   useCameraButton: $('#useCameraButton'), cameraDialogStatus: $('#cameraDialogStatus'), cropButton: $('#cropButton'), cropHint: $('#cropHint'),
-  fileInput: $('#fileInput'), importButton: $('#importButton'),
+  fileInput: $('#fileInput'), importButton: $('#importButton'), sampleGrid: $('#sampleGrid'),
   fabricWidth: $('#fabricWidth'), fabricHeight: $('#fabricHeight'), fabricLengthHint: $('#fabricLengthHint'), fabricBadge: $('#fabricBadge'), fabricIntro: $('#fabricIntro'),
   analysisPill: $('#analysisPill'), analysisBox: $('#analysisSummary'), analysisSummary: $('#analysisSummary p'),
   sensitivity: $('#sensitivity'), sensitivityValue: $('#sensitivityValue'), sensitivityControl: $('.threshold-control'),
@@ -779,6 +779,24 @@ function loadFile(file) {
   image.onerror = () => { URL.revokeObjectURL(url); setStatus('Impossible de lire cette image : essaie une photo JPEG ou PNG'); };
   image.src = url;
 }
+
+// D-62 : photos de test, chargées comme une photo importée.
+async function loadSample({ file, label }) {
+  setStatus(`Chargement de la photo de test « ${label} »…`);
+  const response = await fetch(`${SAMPLE_FOLDER}/${file}`);
+  if (!response.ok) throw new Error(`photo de test introuvable (${file})`);
+  const blob = await response.blob();
+  loadFile(new File([blob], file, { type: blob.type || 'image/jpeg' }));
+}
+ui.sampleGrid.replaceChildren(...SAMPLE_PHOTOS.map((sample) => {
+  const button = document.createElement('button');
+  button.type = 'button'; button.className = 'sample'; button.title = sample.label; button.setAttribute('aria-label', `Photo de test : ${sample.label}`);
+  const image = document.createElement('img');
+  image.src = `${SAMPLE_FOLDER}/${sample.file}`; image.alt = ''; image.loading = 'lazy'; image.decoding = 'async';
+  button.append(image);
+  button.addEventListener('click', guard(() => loadSample(sample)));
+  return button;
+}));
 
 ui.fileInput.addEventListener('change', () => {
   const file = ui.fileInput.files[0];

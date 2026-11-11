@@ -3,7 +3,7 @@
 // qu'à un seul endroit.
 
 /** Version du code, comparée à celle de index.html au démarrage (D-33). À changer à chaque livraison. */
-export const APP_VERSION = '2026-11-12.2';
+export const APP_VERSION = '2026-11-12.3';
 
 /** Dimensions du coupon proposées par défaut ; modifiables dans l'interface (D-20). */
 export const FABRIC = Object.freeze({ widthCm: 300, heightCm: 450 });
@@ -54,6 +54,24 @@ export const DEFAULT_MATERIAL = 'coton';
 
 /** Orientations autorisées pour une matière : un seul sens pour les tissus à poil ou à reflet. */
 export function materialAngles(material) { return material.oneWay ? [0] : [0, 180]; }
+
+/**
+ * Photos de test proposées sous « Importer une photo » (D-62), dans photos-test/.
+ * Les n° 1 à 8 sont des images de synthèse ; les autres sont de vraies photos.
+ */
+export const SAMPLE_PHOTOS = Object.freeze([
+  { file: '0-coton-plis-tache.webp', label: 'Coton froissé, grande tache' },
+  { file: '9-jean-reel-taches.png', label: 'Jean, taches de terre' },
+  { file: '1-rayures-cafe.jpg', label: 'Rayures, café' },
+  { file: '2-vichy-graisse.jpg', label: 'Vichy, graisse' },
+  { file: '3-tartan-javel.jpg', label: 'Tartan, javel' },
+  { file: '4-pois-vin.jpg', label: 'Pois, vin' },
+  { file: '5-jean-huile.jpg', label: 'Jean, huile' },
+  { file: '6-fleuri-encre.jpg', label: 'Fleuri, encre et stylo' },
+  { file: '7-chevrons-rouille.jpg', label: 'Chevrons, rouille' },
+  { file: '8-lin-uni-herbe.jpg', label: 'Lin uni, herbe' }
+]);
+export const SAMPLE_FOLDER = 'photos-test';
 
 /** Nombre d'exemplaires demandé par défaut, et borne du champ (D-57). */
 export const DEFAULT_QUANTITY = 1;

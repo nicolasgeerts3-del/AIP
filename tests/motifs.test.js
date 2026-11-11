@@ -83,3 +83,18 @@ describe('[D-61] taches sur tissu à motif', () => {
     assert.throws(() => detectOnPattern(planes, { madFactor: 0 }), RangeError);
   });
 });
+
+describe('[D-62] photos de test proposées dans le site', () => {
+  it('chaque photo de SAMPLE_PHOTOS existe dans photos-test/ et a un libellé', async () => {
+    const { existsSync } = await import('node:fs');
+    const { SAMPLE_FOLDER, SAMPLE_PHOTOS } = await import('../src/config.js');
+    assert.ok(SAMPLE_PHOTOS.length >= 10);
+    for (const { file, label } of SAMPLE_PHOTOS) {
+      assert.ok(label, `${file} sans libellé`);
+      assert.ok(existsSync(new URL(`../${SAMPLE_FOLDER}/${file}`, import.meta.url)), `${file} introuvable`);
+    }
+    // Le dossier doit être publié avec le site (il n'est pas dans .vercelignore).
+    const { readFileSync } = await import('node:fs');
+    assert.ok(!readFileSync(new URL('../.vercelignore', import.meta.url), 'utf8').includes(SAMPLE_FOLDER));
+  });
+});
