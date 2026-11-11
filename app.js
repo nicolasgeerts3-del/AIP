@@ -35,6 +35,7 @@ const ui = {
   fabricWidth: $('#fabricWidth'), fabricHeight: $('#fabricHeight'), fabricLengthHint: $('#fabricLengthHint'), fabricBadge: $('#fabricBadge'), fabricIntro: $('#fabricIntro'),
   analysisPill: $('#analysisPill'), analysisBox: $('#analysisSummary'), analysisSummary: $('#analysisSummary p'),
   sensitivity: $('#sensitivity'), sensitivityValue: $('#sensitivityValue'), sensitivityControl: $('.threshold-control'),
+  patternSwitch: $('#patternSwitch'), patternHint: $('#patternHint'),
   topbar: $('#topbar'), guide: $('.guide'), steps: [$('#stepCapture'), $('#stepAnalyze'), $('#stepPlan')], stepAnalyze: $('#stepAnalyze'), stepPlan: $('#stepPlan'),
   step1: $('#step1'), step2: $('#step2'), step3: $('#step3'),
   maskStage: $('.mask-stage'), maskCanvas: $('#maskCanvas'), brushCursor: $('#brushCursor'), editorEmpty: $('#editorEmpty'), maskCount: $('#maskCount'),
@@ -94,6 +95,8 @@ const state = {
   material: DEFAULT_MATERIAL, // matière du tissu : sens des pièces, marge, tolérance au grain (D-56)
   quantity: DEFAULT_QUANTITY, // nombre d'exemplaires demandé, ou 'max' (D-57)
   drag: null,         // pièce en cours de déplacement à la souris (D-58)
+  patternMode: 'auto', // D-61 : 'auto' jusqu'à la première analyse de la photo, puis true (motif) ou false (uni)
+  patternChosen: false, // l'utilisateur a-t-il réglé lui-même « Tissu à motif » ?
   painting: false,
   history: [],        // D-27 : calques { added, erased } avant chaque retouche, pour « Annuler »
   pointer: null,      // dernière position de la souris sur le masque (aperçu du pinceau)
@@ -320,6 +323,7 @@ function loadImage(source) {
   state.addedMask = createMask(imageWidth, imageHeight);
   state.erasedMask = createMask(imageWidth, imageHeight);
   state.analyzed = false; state.derived = null; state.inputVersion += 1;
+  state.patternMode = 'auto'; state.patternChosen = false; // nouvelle photo : le type de tissu est à reconnaître
   state.history = []; ui.undoButton.disabled = true;
 
   const ratio = width / height;
@@ -486,7 +490,7 @@ function renderAnalysisSummary() {
   ui.analysisBox.classList.toggle('warn', suspicious);
   ui.analysisSummary.textContent = `${formatArea(defectAreaCm2())} repérés, soit ${integerFormat.format(ratio * 100)} % du tissu. `
     + (suspicious
-      ? 'C’est beaucoup : si des plis ou des reflets sont en rouge, glisse le curseur vers « Ignore plis et reflets » ou efface-les au pinceau.'
+      ? `C’est beaucoup : si des plis ou des reflets sont en rouge, glisse le curseur vers « Ignore plis et reflets »${state.patternMode === true ? '' : ', active « Tissu à motif »'} ou efface-les au pinceau.`
       : 'Vérifie que chaque tache est bien en rouge ; corrige au pinceau si besoin.');
 }
 
@@ -494,7 +498,14 @@ function runAnalysis() {
   if (!state.image) return;
   const { texture } = currentMaterial();
   // D-56 : le grain naturel d'une matière texturée relève les écarts minimaux.
-  const { mask } = detectDefects(state.image.planes, { madFactor: Number(ui.sensitivity.value), minLuminanceDelta: 4 * texture, minChromaDelta: 4 * texture });
+  const { mask, patterned } = detectDefects(state.image.planes, {
+    madFactor: Number(ui.sensitivity.value), minLuminanceDelta: 4 * texture, minChromaDelta: 4 * texture, pattern: state.patternMode
+  });
+  // D-61 : le type de tissu reconnu à la première analyse est gardé ensuite,
+  // pour que le curseur de sensibilité ne fasse pas changer de méthode.
+  state.patternMode = patterned;
+  ui.patternSwitch.checked = patterned;
+  ui.patternHint.textContent = state.patternChosen ? 'réglé à la main' : patterned ? 'motif ou plis reconnus sur la photo' : 'tissu uni reconnu sur la photo';
   state.autoMask = mask; state.analyzed = true;
   maskChanged();
   ui.analysisPill.textContent = 'ANALYSÉ';
@@ -812,6 +823,14 @@ ui.sensitivity.addEventListener('input', () => {
   state.analysisQueued = true;
   requestAnimationFrame(guard(() => { state.analysisQueued = false; runAnalysis(); }));
 });
+
+// D-61 : « Tissu à motif » choisit la méthode de détection (reconnue toute seule, modifiable à la main).
+ui.patternSwitch.addEventListener('change', guard(() => {
+  state.patternMode = ui.patternSwitch.checked; state.patternChosen = true;
+  ui.patternHint.textContent = 'réglé à la main';
+  if (state.image) runAnalysis();
+  setStatus(state.patternMode ? 'Tissu à motif : seules les couleurs qui n’apparaissent qu’à un endroit sont marquées.' : 'Tissu uni : tout ce qui diffère de la couleur du tissu est marqué.');
+}));
 
 ui.brushSize.addEventListener('input', () => { ui.brushValue.textContent = `${ui.brushSize.value} cm`; renderBrushCursor(); });
 ui.addTool.addEventListener('click', () => setBrushMode('add'));

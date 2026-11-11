@@ -12,7 +12,7 @@
 // que le bruit isolé disparaît — l'ancienne érosion effaçait les deux.
 import { DEFAULT_MAD_FACTOR } from '../config.js';
 import { linearLuminance, linearToLab, median, srgbToLinear } from './color.js';
-import { createMask, dilate, fillHoles, filterComponents } from './mask.js';
+import { createMask, dilate, erode, fillHoles, filterComponents } from './mask.js';
 
 const MIN_LUMINANCE = 1e-4;
 
@@ -124,6 +124,7 @@ function growInto(mask, candidates) {
 }
 
 /**
+ * Détection sur tissu uni (ou à texture fine).
  * Renvoie { mask, threshold, luminanceThreshold, center, mad } ; mask a la
  * résolution de l'image.
  * Options : madFactor (sensibilité commune aux deux tests), sampleStep,
@@ -131,7 +132,7 @@ function growInto(mask, candidates) {
  * en fraction du petit côté de l'image), minLuminanceDelta (écart minimal
  * de L* pour éviter de signaler la texture du tissu).
  */
-export function detectDefects(planes, {
+export function detectOnPlainFabric(planes, {
   madFactor = DEFAULT_MAD_FACTOR, sampleStep = 4, minMad = 0.5,
   useLuminance = true, localWindowFraction = 0.1, minLuminanceDelta = 4, minChromaDelta = 4, minGroupSize
 } = {}) {
@@ -161,7 +162,7 @@ export function detectDefects(planes, {
   // 2. Luminosité locale. Le fond est recalculé en excluant les taches déjà
   // trouvées : sinon une tache sombre assombrit le fond autour d'elle et le
   // tissu sain voisin ressort comme « trop clair ».
-  let luminanceThreshold = Infinity;
+  let luminanceThreshold = Infinity; let luminanceSigma = 0;
   if (useLuminance) {
     const radius = Math.max(2, Math.round(Math.min(width, height) * localWindowFraction));
     const plain = boxMean(L, width, height, radius);
@@ -172,6 +173,7 @@ export function detectDefects(planes, {
       const residual = (index) => Math.abs(L[index] - background[index]);
       const sigma = robustSigma(sampledIndexes.filter((index) => !excluded[index]).map((index) => L[index] - background[index]), minMad);
       luminanceThreshold = Math.max(minLuminanceDelta * floorScale, madFactor * sigma);
+      if (pass === 0) luminanceSigma = sigma; // avant toute exclusion : mesure le motif éventuel
       luminanceHits = new Uint8Array(raw.data.length);
       for (let pixel = 0; pixel < raw.data.length; pixel += 1) {
         const gap = residual(pixel);
@@ -202,5 +204,127 @@ export function detectDefects(planes, {
   const groupSize = minGroupSize ?? Math.max(16, Math.round(width * height / 9000));
   const kept = filterComponents(dilate(raw, 1), (cells) => cells.length >= groupSize || cells.some((cell) => strong[cell]));
   const mask = fillHoles(growInto(kept, faint), looksLikeStain);
-  return { mask, threshold: chroma.threshold, luminanceThreshold, center, mad: chroma.mad };
+  return { mask, threshold: chroma.threshold, luminanceThreshold, luminanceSigma, center, mad: chroma.mad };
+}
+
+// ---------- Tissus à motif (D-61) ----------
+//
+// Sur un tissu à rayures, à carreaux, à pois ou fleuri, « ce qui diffère de la
+// couleur dominante » ne veut plus rien dire : le motif lui-même en diffère.
+// On s'appuie sur une autre propriété : une couleur du motif se retrouve
+// PARTOUT sur le tissu, alors que la couleur d'une tache n'existe qu'à un
+// endroit. L'image est découpée en dalles ; pour chaque couleur (case de
+// l'espace L*a*b*) on compte dans combien de dalles elle apparaît. Un pixel
+// dont la couleur n'est présente que dans peu de dalles est un défaut.
+
+/** Part maximale des dalles où une couleur peut apparaître pour rester « locale » (donc suspecte). */
+const LOCAL_SPREAD = 0.3;
+
+/**
+ * Renvoie { mask, binSize } ; mask a la résolution de l'image.
+ * Options : madFactor (curseur : fixe la taille des cases de couleur, donc
+ * l'écart minimal avec le motif), tilesAcross (dalles sur la largeur),
+ * minGroupSize (plus petit groupe de pixels gardé).
+ */
+export function detectOnPattern(planes, { madFactor = DEFAULT_MAD_FACTOR, tilesAcross = 8, minGroupSize, colorStep = 5 } = {}) {
+  if (!Number.isFinite(madFactor) || madFactor <= 0) throw new RangeError(`Facteur MAD invalide : ${madFactor}`);
+  const { width, height, L, a, b } = planes;
+  const count = width * height;
+  const binSize = Math.min(12, Math.max(3, colorStep * madFactor / DEFAULT_MAD_FACTOR));
+  const tilesX = Math.max(2, Math.min(tilesAcross, Math.floor(width / 24)));
+  const tilesY = Math.max(2, Math.min(tilesAcross, Math.round(tilesX * height / width), Math.floor(height / 24)));
+  const tileCount = tilesX * tilesY;
+  const tileOf = new Uint16Array(count);
+  for (let y = 0; y < height; y += 1) {
+    const row = Math.min(tilesY - 1, Math.floor(y * tilesY / height)) * tilesX;
+    for (let x = 0; x < width; x += 1) tileOf[y * width + x] = row + Math.min(tilesX - 1, Math.floor(x * tilesX / width));
+  }
+  // Une couleur compte dans une dalle à partir de quelques pixels (pas un pixel de bruit isolé).
+  const minPerTile = Math.max(2, Math.round(count / tileCount / 2500));
+  const localTiles = Math.max(1, Math.floor(tileCount * LOCAL_SPREAD));
+
+  // L'éclairage est aplani (L* moins sa moyenne locale) pour qu'un dégradé de
+  // lumière ne fasse pas passer un coin sombre pour une couleur « locale ».
+  // Deuxième passe : la moyenne locale est recalculée sans les défauts trouvés,
+  // sinon une grande tache sombre décale la couleur du tissu sain autour d'elle.
+  const radius = Math.max(4, Math.round(Math.min(width, height) * 0.15));
+  const plain = boxMean(L, width, height, radius);
+  const sampled = [];
+  for (let pixel = 0; pixel < count; pixel += 11) sampled.push(L[pixel]);
+  const level = median(sampled);
+  const stride = 64; // cases par axe, largement au-dessus de 256 / 3
+  let raw = createMask(width, height);
+  for (let pass = 0; pass < 2; pass += 1) {
+    const background = pass === 0 ? plain : maskedBoxMean(L, raw.data, width, height, radius, plain);
+    const binOf = new Int32Array(count);
+    const tiles = new Map(); // case de couleur → nombre de pixels par dalle
+    for (let pixel = 0; pixel < count; pixel += 1) {
+      const lq = Math.max(0, Math.min(stride - 1, Math.floor((L[pixel] - background[pixel] + level + 20) / binSize)));
+      const aq = Math.max(0, Math.min(stride - 1, Math.floor((a[pixel] + 128) / binSize)));
+      const bq = Math.max(0, Math.min(stride - 1, Math.floor((b[pixel] + 128) / binSize)));
+      const bin = (lq * stride + aq) * stride + bq;
+      binOf[pixel] = bin;
+      let counts = tiles.get(bin);
+      if (!counts) { counts = new Uint16Array(tileCount); tiles.set(bin, counts); }
+      if (counts[tileOf[pixel]] < 65535) counts[tileOf[pixel]] += 1;
+    }
+    // Étendue d'une couleur = dalles où elle, ou une couleur voisine (case adjacente), est présente.
+    const neighbours = [0, 1, -1, stride, -stride, stride * stride, -stride * stride];
+    const local = new Map();
+    for (const bin of tiles.keys()) {
+      let spread = 0;
+      for (let tile = 0; tile < tileCount && spread <= localTiles; tile += 1) {
+        for (const offset of neighbours) {
+          const counts = tiles.get(bin + offset);
+          if (counts && counts[tile] >= minPerTile) { spread += 1; break; }
+        }
+      }
+      local.set(bin, spread <= localTiles);
+    }
+    raw = createMask(width, height);
+    for (let pixel = 0; pixel < count; pixel += 1) if (local.get(binOf[pixel])) raw.data[pixel] = 1;
+  }
+
+  // Nettoyage : fermeture (une tache traversée par le motif reste d'un seul
+  // tenant), petits groupes retirés, petits trous bouchés.
+  const groupSize = minGroupSize ?? Math.max(24, Math.round(count / 6000));
+  const closed = erode(dilate(raw, 2), 1);
+  const kept = filterComponents(closed, (cells) => cells.length >= groupSize);
+  const mask = fillHoles(kept, (cells) => cells.length < count / 50);
+  return { mask, binSize };
+}
+
+/** Le masque touche-t-il presque toutes les zones du tissu ? (signe d'un motif pris pour des taches) */
+function isEverywhere(mask, tilesAcross = 6) {
+  const { width, height, data } = mask;
+  const tilesX = tilesAcross; const tilesY = Math.max(2, Math.round(tilesAcross * height / width));
+  const hits = new Uint32Array(tilesX * tilesY);
+  for (let y = 0; y < height; y += 1) {
+    const row = Math.min(tilesY - 1, Math.floor(y * tilesY / height)) * tilesX;
+    for (let x = 0; x < width; x += 1) if (data[y * width + x]) hits[row + Math.min(tilesX - 1, Math.floor(x * tilesX / width))] += 1;
+  }
+  const minHits = Math.max(4, Math.round(width * height / hits.length / 400));
+  let touched = 0;
+  for (const value of hits) if (value >= minHits) touched += 1;
+  return touched >= hits.length * 0.6;
+}
+
+/** Au-delà de cet écart-type (en unités L*a*b*), le « bruit » du tissu est un motif. */
+const PATTERN_SIGMA = 7;
+
+/**
+ * Détection des défauts. `pattern` choisit la méthode :
+ *  - false : tissu uni (detectOnPlainFabric) ;
+ *  - true : tissu à motif (detectOnPattern) ;
+ *  - 'auto' (défaut) : uni d'abord ; si le tissu varie fortement ou si le
+ *    résultat marque des zones partout, c'est un motif et on bascule.
+ * Renvoie le résultat de la méthode retenue, plus { patterned }.
+ */
+export function detectDefects(planes, { pattern = 'auto', ...options } = {}) {
+  if (pattern === true) return { ...detectOnPattern(planes, options), patterned: true };
+  const plainResult = detectOnPlainFabric(planes, options);
+  if (pattern === false) return { ...plainResult, patterned: false };
+  const strongVariation = plainResult.mad > PATTERN_SIGMA || plainResult.luminanceSigma > PATTERN_SIGMA;
+  if (!strongVariation && !isEverywhere(plainResult.mask)) return { ...plainResult, patterned: false };
+  return { ...plainResult, ...detectOnPattern(planes, options), patterned: true };
 }

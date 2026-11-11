@@ -294,8 +294,13 @@ async function campaign(baseUrl) {
     await open(baseUrl, 'pc');
     await importWith(REAL_FILE);
     await shot('pc-13-photo-reelle');
+    // D-61 : les plis de la photo réelle ne sont plus pris pour des taches (22 % du tissu marqué avant, moins de 10 % maintenant).
+    check(await evaluate("document.querySelector('#patternSwitch').checked"), 'plis non reconnus : la détection « motif » n’a pas été choisie');
+    check(await evaluate('(() => { const m = retissDebug.getMasks().gridMask; let n = 0; for (const v of m.data) n += v; return n / m.data.length; })()') < 0.1, 'les plis sont encore marqués comme des taches');
+    // En repassant en « tissu uni », on retrouve l'ancien comportement : l'alerte doit alors proposer une piste.
+    await evaluate("(() => { const s = document.querySelector('#patternSwitch'); s.checked = false; s.dispatchEvent(new Event('change')); })()");
     const summary = await evaluate("document.querySelector('#analysisSummary').textContent");
-    check(/plis|reflets|tolérant|ignore/i.test(summary), `aucune alerte alors que les plis sont pris pour des taches : « ${summary.trim()} »`);
+    check(/plis|reflets|motif/i.test(summary), `aucune alerte alors que les plis sont pris pour des taches : « ${summary.trim()} »`);
   });
 
   await step('[U-14] Pinceau : la taille réelle est prévisualisée sous la souris', async () => {
