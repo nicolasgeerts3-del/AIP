@@ -688,11 +688,11 @@ async function exportPdf() {
   await new Promise((resolve) => setTimeout(resolve, 30)); // laisse le navigateur afficher le statut
   try {
     const pdf = buildCutPlanPdf(JsPdf, {
-      placements: state.plan.placements, overviewPng: ui.resultCanvas.toDataURL('image/png'),
+      placements: state.plan.placements, overviewPng: ui.resultCanvas.toDataURL('image/jpeg', 0.85), // D-64 : JPEG, le PNG de la photo pesait près de 10 Mo
       completeKits: state.plan.stats.completeKits, kitLabel: state.plan.model.many, fabric: state.fabric, cellMm: CELL_MM, colors: state.plan.model.colors
     });
     pdf.save('retiss-plan-1-1.pdf');
-    setStatus(`PDF généré (${pdf.getNumberOfPages()} pages)`);
+    setStatus(`PDF généré : ${pdf.getNumberOfPages()} pages, dont ${pdf.getNumberOfPages() - 1} à imprimer en taille réelle et à assembler (voir la 1re page). Pour découper, la projection évite cette étape.`);
   } finally {
     ui.downloadButton.disabled = !state.plan?.placements.length;
   }

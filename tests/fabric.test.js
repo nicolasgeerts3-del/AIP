@@ -52,8 +52,8 @@ describe('[D-20] taille du tissu', () => {
       text() {} lines() {} line() {} rect() {} addImage() {} setDrawColor() {} setLineWidth() {} setFontSize() {}
     }
     const pdf = buildCutPlanPdf(CountingPdf, { placements: result.placements, completeKits: 1, fabric, cellMm: CELL_MM, colors: COLORS });
-    // 1500 mm / 190 mm → 8 colonnes, 2250 mm / 277 mm → 9 rangées, plus la synthèse.
-    assert.equal(pdf.getNumberOfPages(), 8 * 9 + 1);
+    // 1500 mm / 190 mm → 8 colonnes, 2250 mm / 277 mm → 9 rangées : au plus 72 pages, seules celles où passe une pièce (D-64).
+    assert.ok(pdf.getNumberOfPages() > 1 && pdf.getNumberOfPages() <= 8 * 9 + 1, `${pdf.getNumberOfPages()} pages`);
   });
 });
 

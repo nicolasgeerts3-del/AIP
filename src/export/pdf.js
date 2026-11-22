@@ -1,4 +1,6 @@
 // Export PDF : une page de synthèse puis le plan à l'échelle 1:1 découpé en pages A4.
+// D-64 : seules les pages où passe une pièce sont imprimées (un coupon de 3 × 2,25 m
+// faisait 144 pages, presque toutes vides) ; la synthèse montre où va chaque page.
 import { formatFabric } from '../core/fabric.js';
 import { placementOutline, polygonBounds } from '../core/geometry.js';
 
@@ -33,7 +35,8 @@ export function outlineMm(placement, cellMm) {
 /** Vrai si la boîte du polygone recoupe la tuile (un contour peut traverser une page sans y avoir de sommet, D-06). */
 export function polygonTouchesTile(polygon, tile) {
   const box = polygonBounds(polygon);
-  return box.maxX >= tile.x && box.minX <= tile.x + tile.width && box.maxY >= tile.y && box.minY <= tile.y + tile.height;
+  // Stricte : un contour posé pile sur le bord d’une page est déjà dessiné sur celle-ci, pas besoin de la suivante (D-64).
+  return box.maxX > tile.x && box.minX < tile.x + tile.width && box.maxY > tile.y && box.minY < tile.y + tile.height;
 }
 
 function drawCropMarks(pdf, x, y, width, height) {
@@ -53,6 +56,23 @@ function drawClosedPolygon(pdf, polygon) {
  * Construit le document. `JsPdf` est le constructeur jsPDF (injecté pour
  * pouvoir tester sans navigateur). Renvoie l'instance, prête pour .save().
  */
+/** Tuiles où passe au moins une pièce, dans l'ordre de lecture (rangée puis colonne). */
+export function usedTiles(tiles, polygons) {
+  return tiles.filter((tile) => polygons.some((polygon) => polygonTouchesTile(polygon, tile)));
+}
+
+/** Quadrillage d'assemblage sur la vignette : un cadre et un repère « L2C3 » par page imprimée. */
+function drawAssemblyGrid(pdf, box, fabricWidthMm, tiles) {
+  const scale = box.width / fabricWidthMm;
+  pdf.setDrawColor(40); pdf.setLineWidth(0.15);
+  for (const tile of tiles) {
+    const x = box.x + tile.x * scale; const y = box.y + tile.y * scale; const w = tile.width * scale; const h = tile.height * scale;
+    pdf.rect(x, y, w, h);
+    const size = Math.min(6, w * 0.9 / 1.6, h * 0.5) * 2.83; // taille de police en points, d'après la largeur du cadre en mm
+    if (size >= 3) { pdf.setFontSize(size); pdf.text(`L${tile.row + 1}C${tile.column + 1}`, x + w / 2, y + h / 2, { align: 'center', baseline: 'middle' }); }
+  }
+}
+
 export function buildCutPlanPdf(JsPdf, { placements, overviewPng, completeKits, kitLabel = 'T-shirts', fabric, cellMm, colors, margin = 10 }) {
   if (typeof JsPdf !== 'function') throw new TypeError('Bibliothèque jsPDF indisponible');
   if (!placements.length) throw new RangeError('Aucune pièce à exporter');
@@ -60,17 +80,21 @@ export function buildCutPlanPdf(JsPdf, { placements, overviewPng, completeKits, 
   const pdf = new JsPdf({ orientation: 'portrait', unit: 'mm', format: 'a4' });
 
   pdf.setFontSize(16); pdf.text('ReTiss — plan de découpe 1:1', 15, 18);
-  pdf.setFontSize(10); pdf.text(`${completeKits} ${kitLabel} complets ·${placements.length} pièces · tissu ${formatFabric(fabric)}`, 15, 26);
-  if (overviewPng) {
-    const box = overviewBox(fabric);
-    pdf.addImage(overviewPng, 'PNG', box.x, box.y, box.width, box.height);
-  }
+  const outlines = placements.map((placement) => ({ placement, polygon: outlineMm(placement, cellMm) }));
+  const { tiles } = computeTiles({ fabricWidthMm, fabricHeightMm, margin });
+  const printed = usedTiles(tiles, outlines.map(({ polygon }) => polygon));
+
+  pdf.setFontSize(10); pdf.text(`${completeKits} ${kitLabel} complets · ${placements.length} pièces · tissu ${formatFabric(fabric)}`, 15, 26);
+  pdf.setFontSize(9);
+  pdf.text(`${printed.length} pages A4 à imprimer à 100 % (taille réelle), sur ${tiles.length} pour tout le tissu : les pages sans pièce sont omises.`, 15, 31);
+  const box = overviewBox(fabric);
+  if (overviewPng) pdf.addImage(overviewPng, overviewPng.startsWith('data:image/jpeg') ? 'JPEG' : 'PNG', box.x, box.y, box.width, box.height);
+  drawAssemblyGrid(pdf, box, fabricWidthMm, printed);
+  pdf.setFontSize(9); pdf.text('Assemblage : chaque cadre est une page, repérée L (rangée) et C (colonne) en bas de page ; aligner les croix des coins.', 15, 160);
   pdf.setDrawColor(0); pdf.setLineWidth(0.3); pdf.rect(15, 165, 100, 100);
   pdf.setFontSize(9); pdf.text('Carré témoin 10 cm × 10 cm — vérifier : ce carré doit mesurer 10 cm à l’impression', 15, 272);
 
-  const outlines = placements.map((placement) => ({ placement, polygon: outlineMm(placement, cellMm) }));
-  const { tiles } = computeTiles({ fabricWidthMm, fabricHeightMm, margin });
-  for (const tile of tiles) {
+  for (const tile of printed) {
     pdf.addPage();
     for (const { placement, polygon } of outlines) {
       if (!polygonTouchesTile(polygon, tile)) continue;

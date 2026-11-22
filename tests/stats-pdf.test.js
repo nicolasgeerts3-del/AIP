@@ -70,10 +70,15 @@ describe('buildCutPlanPdf', () => {
     assert.ok(Math.abs(Math.max(...ys) - Math.min(...ys) - 80) < 1e-6);
   });
 
-  it('crée une page de synthèse puis une page par tuile', () => {
+  it('[D-64] crée une page de synthèse puis une page par tuile où passe une pièce, pas plus', () => {
     const pdf = buildCutPlanPdf(RecorderPdf, { placements: [place('DOS', 10, 10)], completeKits: 0, fabric: FABRIC, cellMm: CELL_MM, colors: COLORS });
-    assert.equal(pdf.getNumberOfPages(), 1 + 272);
+    // Le dos (52 × 73 cm) posé en haut à gauche touche 3 colonnes × 3 rangées de pages, sur 272 pour tout le tissu.
+    assert.equal(pdf.getNumberOfPages(), 1 + 9);
     assert.equal(pdf.options.format, 'a4');
+    assert.ok(pdf.pages.slice(1).every((page) => page.some((call) => call.type === 'lines')), 'une page imprimée est vide');
+    // La synthèse dit combien de pages imprimer et dessine un cadre par page.
+    assert.ok(pdf.pages[0].some((call) => call.type === 'text' && /9 pages A4 à imprimer/.test(call.value) && /272/.test(call.value)));
+    assert.equal(pdf.pages[0].filter((call) => call.type === 'rect').length, 9 + 1); // 9 cadres + le carré témoin
   });
 
   it('[D-06] dessine une pièce sur toutes les pages qu’elle traverse, même sans sommet dedans', () => {
