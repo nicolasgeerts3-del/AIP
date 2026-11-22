@@ -625,12 +625,13 @@ async function runNesting() {
     showPlanAdvice(kits);
     ui.planHint.hidden = kits === 0;
     if (!kits) setStatus(`Aucun ${model.one} complet ne tient sur le tissu : lis l’explication à l’étape 3.`);
-    else if (requested && kits < requested) setStatus(`Seulement ${countLabel(kits, model)} sur ${requested} demandés : le tissu sain ne suffit pas pour plus. Projette le plan ou télécharge le PDF 1:1.`);
-    else setStatus(`${countLabel(kits, model)} (${placements.length} pièces placées). Projette le plan sur le tissu ou télécharge le PDF 1:1.`);
+    else if (requested && kits < requested) setStatus(`Seulement ${countLabel(kits, model)} sur ${requested} demandés : le tissu sain ne suffit pas pour plus. Projette le plan sur le tissu, ou imprime le patron papier.`);
+    else setStatus(`${countLabel(kits, model)} (${placements.length} pièces placées). Projette le plan sur le tissu, ou imprime le patron papier.`);
     publishPlan();
     setProgress(100, 'Plan calculé');
     // D-47 : le résultat s'affiche à l'écran, sans avoir à le chercher.
-    if (ui.step3.getBoundingClientRect().top < 0 || ui.resultFrame.getBoundingClientRect().top > innerHeight * 0.6) goToStep(ui.step3);
+    // Sur téléphone, les réglages de l’étape 3 remplissent l’écran : on amène le plan lui-même sous la barre du haut.
+    if (ui.resultFrame.getBoundingClientRect().top < 0 || ui.resultFrame.getBoundingClientRect().top > innerHeight * 0.6) goToStep(ui.resultFrame);
   } finally {
     state.nesting = false;
     ui.planButton.disabled = !state.analyzed;
@@ -684,15 +685,15 @@ async function exportPdf() {
     setStatus('PDF indisponible : la bibliothèque jsPDF n’a pas pu être chargée (connexion Internet ?)');
     return;
   }
-  ui.downloadButton.disabled = true; setStatus('Génération du PDF…');
+  ui.downloadButton.disabled = true; setStatus('Préparation du patron papier…');
   await new Promise((resolve) => setTimeout(resolve, 30)); // laisse le navigateur afficher le statut
   try {
     const pdf = buildCutPlanPdf(JsPdf, {
       placements: state.plan.placements, overviewPng: ui.resultCanvas.toDataURL('image/jpeg', 0.85), // D-64 : JPEG, le PNG de la photo pesait près de 10 Mo
       completeKits: state.plan.stats.completeKits, kitLabel: state.plan.model.many, fabric: state.fabric, cellMm: CELL_MM, colors: state.plan.model.colors
     });
-    pdf.save('retiss-plan-1-1.pdf');
-    setStatus(`PDF généré : ${pdf.getNumberOfPages()} pages, dont ${pdf.getNumberOfPages() - 1} à imprimer en taille réelle et à assembler (voir la 1re page). Pour découper, la projection évite cette étape.`);
+    pdf.save('retiss-patron-papier.pdf');
+    setStatus(`Patron papier prêt : ${pdf.getNumberOfPages() - 1} feuilles A4 à imprimer à 100 % et à assembler (plan d’assemblage en 1re page). Avec le projecteur, cette étape est inutile.`);
   } finally {
     ui.downloadButton.disabled = !state.plan?.placements.length;
   }

@@ -18,7 +18,7 @@ Prototype web pour analyser les taches sur un tissu, placer des patrons en évit
   - `stats.js` — bilan matière ;
   - `fabric.js` — taille du coupon et grille associée ;
   - `perspective.js` — recadrage 4 coins et correction de perspective.
-- `src/export/pdf.js` — génération du PDF 1:1.
+- `src/export/pdf.js` — patron papier : le plan en taille réelle, seulement les feuilles A4 où passe une pièce, avec un plan d’assemblage.
 - `src/ui/` — dessin des canvas, accès caméra et fenêtre de projection (`projection-app.js`).
 - `projection.html`, `projection.css` — fenêtre plein écran affichée sur le projecteur.
   - `src/core/projection.js` — calibrage 4 coins et données envoyées au projecteur.
@@ -54,7 +54,7 @@ La barre du haut montre les 3 étapes (cliquables) et dit toujours quoi faire en
 
 1. **Photo** — glisser la photo sur la page, la coller (Ctrl + V), cliquer **Importer une photo**, utiliser la caméra de l’ordinateur, ou **📱 Téléphone ou autre caméra** : un téléphone fixé sur un support au-dessus du tissu, vu comme une webcam (la fenêtre explique la connexion : Lien avec Windows, DroidCam, Iriun, Camo, Caméra de continuité ; on clique **Figer l’image** depuis l’ordinateur). Saisir la largeur réelle du tissu ; sans recadrage, la longueur suit les proportions de la photo. Si la table apparaît autour du tissu : **Recadrer sur le tissu (4 coins)**, cliquer les 4 coins dans n’importe quel ordre (Retour arrière : dernier coin, Échap : abandonner).
 2. **Taches** — l’analyse est automatique et repère aussi les traits fins (crayon, fil tiré). Le type de tissu est reconnu tout seul : sur un **tissu à motif** (rayures, carreaux, pois, fleurs), seules les couleurs qui n’apparaissent qu’à un endroit sont marquées ; l’interrupteur « Tissu à motif » permet de corriger ce choix. Si des plis ou des reflets sont en rouge, glisser **Sensibilité de la détection** vers « Ignore plis et reflets », ou les effacer au pinceau (Ctrl + Z pour annuler).
-3. **Plan** — choisir le **modèle à découper**, la **matière du tissu** (velours, laine, jean… : elle règle le sens des pièces, la marge et la tolérance au grain) et le **nombre d’exemplaires** (1 par défaut, ou « Le plus possible »). **Calculer le plan de découpe**, ajuster si besoin en **glissant une pièce à la souris** (double-clic : la retourner), puis **▶ Projeter sur le tissu** (guide du matériel et des réglages : [docs/PROJECTION.md](docs/PROJECTION.md)) ou télécharger le PDF 1:1. Dans la fenêtre de projection, **G** lance la découpe guidée pièce par pièce. Si aucun exemplaire complet ne tient, l’appli explique pourquoi et mène au bon réglage.
+3. **Plan** — choisir le **modèle à découper**, la **matière du tissu** (velours, laine, jean… : elle règle le sens des pièces, la marge et la tolérance au grain) et le **nombre d’exemplaires** (1 par défaut, ou « Le plus possible »). **Calculer le plan de découpe**, ajuster si besoin en **glissant une pièce à la souris** (double-clic : la retourner), puis **▶ Projeter sur le tissu** (guide du matériel et des réglages : [docs/PROJECTION.md](docs/PROJECTION.md)) ou imprimer le **patron papier** (le plan en taille réelle sur des feuilles A4 à assembler, si pas de projecteur). Dans la fenêtre de projection, **G** lance la découpe guidée pièce par pièce. Si aucun exemplaire complet ne tient, l’appli explique pourquoi et mène au bon réglage.
 
 Les défauts connus et corrigés sont suivis dans [docs/DEFAUTS.md](docs/DEFAUTS.md).
 

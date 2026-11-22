@@ -195,7 +195,7 @@ async function scenario(baseUrl, browser) {
     await waitFor('window.__saved !== null', { timeout: 60000, message: 'PDF non généré' });
     const saved = await evaluate('window.__saved');
     // D-64 : synthèse + seules les pages où passe une pièce (272 pages pour tout le tissu).
-    check(saved.pages > 1 && saved.pages <= 273 && saved.name === 'retiss-plan-1-1.pdf', `PDF inattendu : ${JSON.stringify(saved)}`);
+    check(saved.pages > 1 && saved.pages <= 273 && saved.name === 'retiss-patron-papier.pdf', `PDF inattendu : ${JSON.stringify(saved)}`);
     return undefined;
   });
 

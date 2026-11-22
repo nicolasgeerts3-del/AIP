@@ -79,7 +79,7 @@ export function buildCutPlanPdf(JsPdf, { placements, overviewPng, completeKits, 
   const fabricWidthMm = fabric.widthCm * 10; const fabricHeightMm = fabric.heightCm * 10;
   const pdf = new JsPdf({ orientation: 'portrait', unit: 'mm', format: 'a4' });
 
-  pdf.setFontSize(16); pdf.text('ReTiss — plan de découpe 1:1', 15, 18);
+  pdf.setFontSize(16); pdf.text('ReTiss — patron papier, taille réelle', 15, 18);
   const outlines = placements.map((placement) => ({ placement, polygon: outlineMm(placement, cellMm) }));
   const { tiles } = computeTiles({ fabricWidthMm, fabricHeightMm, margin });
   const printed = usedTiles(tiles, outlines.map(({ polygon }) => polygon));
